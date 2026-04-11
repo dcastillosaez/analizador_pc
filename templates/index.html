@@ -178,6 +178,30 @@
           <span class="nav-dot dot-pending" id="nav-dot-connectivity"></span>
         </div>
 
+        <div class="nav-item" id="nav-item-certs" onclick="navigateTo('certs')" tabindex="0" title="Certificados" role="button" aria-label="Certificados del sistema">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Certificados</span>
+          <span class="nav-dot dot-pending" id="nav-dot-certs"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-wifi" onclick="navigateTo('wifi')" tabindex="0" title="Analizador WiFi" role="button" aria-label="Analizador WiFi">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+              <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+              <circle cx="12" cy="20" r="1" fill="currentColor"/>
+              <line x1="12" y1="20" x2="12" y2="23"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Analizador WiFi</span>
+          <span class="nav-dot dot-pending" id="nav-dot-wifi"></span>
+        </div>
+
         <!-- Grupo: Rendimiento -->
         <div class="nav-group-label">Rendimiento</div>
 
@@ -303,6 +327,14 @@
               <span class="overall-label"></span>
             </div>
           </div>
+          <button id="export-btn" class="btn-export" onclick="exportReport()" title="Exportar informe HTML">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span class="btn-label">Exportar informe</span>
+          </button>
           <button id="scan-btn" class="btn-scan" onclick="startScan()">
             <svg class="btn-icon scan-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -745,6 +777,61 @@
       </div>
       <div class="card-body" id="body-services">
         <div class="empty-state"><span class="empty-emoji">⚙️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Certificados del sistema -->
+    <div class="card" id="card-certs">
+      <div class="card-header">
+        <div class="card-icon-wrap c-certs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Certificados del sistema</h2>
+          <p>Certificados caducados o próximos a caducar</p>
+        </div>
+        <div class="card-badge" id="badge-certs"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-certs" onclick="scanCerts()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+            <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-certs">
+        <div class="empty-state"><span class="empty-emoji">🏅</span><p>Pulsa "Analizar" para revisar los certificados del almacén de Windows.</p></div>
+      </div>
+    </div>
+
+    <!-- Analizador WiFi -->
+    <div class="card" id="card-wifi">
+      <div class="card-header">
+        <div class="card-icon-wrap c-wifi">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <circle cx="12" cy="20" r="1" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Analizador WiFi</h2>
+          <p>Redes cercanas, señal, canal y colisiones</p>
+        </div>
+        <div class="card-badge" id="badge-wifi"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-wifi" onclick="scanWifi()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+            <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-wifi">
+        <div class="empty-state"><span class="empty-emoji">📶</span><p>Pulsa "Analizar" para escanear las redes WiFi cercanas.</p></div>
       </div>
     </div>
 

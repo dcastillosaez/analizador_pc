@@ -1244,6 +1244,104 @@ body {
   padding-top: 10px;
 }
 
+/* ─── Botón exportar informe ─────────────────────────────────────────────── */
+.btn-export {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 18px; border-radius: 10px;
+  border: 1px solid rgba(253,203,110,0.4);
+  background: rgba(253,203,110,0.1);
+  color: #fdcb6e; font-family: inherit; font-size: 0.87rem; font-weight: 600;
+  cursor: pointer; transition: background .15s, transform .1s;
+}
+.btn-export:hover { background: rgba(253,203,110,0.2); transform: translateY(-1px); }
+@media (max-width: 900px) { .btn-export .btn-label { display: none; } }
+
+/* ─── Certificados del sistema ───────────────────────────────────────────── */
+.c-certs { background: linear-gradient(135deg, rgba(253,203,110,0.2), rgba(225,112,85,0.15)); }
+.cert-list { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; }
+.cert-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--card-border); background: rgba(255,255,255,0.03);
+}
+.cert-row-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.cert-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.cert-info { min-width: 0; }
+.cert-name   { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cert-detail { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.cert-row-right { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 2px; }
+.cert-expires { font-size: 12px; font-weight: 600; }
+.cert-date       { font-size: 11px; color: var(--text-muted); }
+.cert-store-path { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+.cert-store-path code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+.btn-cert-delete {
+  font-size: 11px; font-weight: 500; margin-top: 4px;
+  padding: 3px 10px; border-radius: 5px; cursor: pointer;
+  border: 1px solid rgba(255,71,87,0.35); background: rgba(255,71,87,0.1); color: #e07474;
+  display: flex; align-items: center; gap: 4px; transition: background .15s;
+}
+.btn-cert-delete:hover:not(:disabled) { background: rgba(255,71,87,0.22); }
+.btn-cert-delete:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ─── Analizador WiFi ────────────────────────────────────────────────────── */
+.c-wifi { background: linear-gradient(135deg, rgba(0,206,201,0.2), rgba(9,132,227,0.2)); }
+
+.wifi-connected-card {
+  background: rgba(0,206,201,0.07);
+  border: 1px solid rgba(0,206,201,0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 10px 0 8px;
+}
+.wifi-conn-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.wifi-conn-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.wifi-conn-ssid { font-size: 14px; font-weight: 600; color: var(--text-primary); flex: 1; }
+.wifi-conn-signal { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 5px; }
+.wifi-conn-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+.wifi-meta-pill {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+}
+.wifi-adapter { color: var(--text-muted); font-size: 10.5px; }
+
+.wifi-diag { margin: 6px 0 10px; }
+
+.wifi-section-title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--text-muted);
+  margin: 12px 0 6px; padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.wifi-table-wrap { overflow-x: auto; }
+.wifi-table {
+  width: 100%; border-collapse: collapse; font-size: 12.5px;
+}
+.wifi-table th {
+  text-align: left; padding: 6px 10px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .4px; color: var(--text-muted);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.wifi-table td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.wifi-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+.wifi-row-me { background: rgba(0,206,201,0.06) !important; }
+.wifi-row-me .wifi-td-ssid { color: #00cec9; font-weight: 600; }
+
+.wifi-td-sig { white-space: nowrap; font-weight: 500; }
+.wifi-td-lock { text-align: center; }
+
+.wifi-ch-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 7px;
+  border-radius: 4px; display: inline-block;
+}
+.wifi-ch-free     { background: rgba(46,213,115,0.12); color: var(--success); border: 1px solid rgba(46,213,115,0.25); }
+.wifi-ch-moderate { background: rgba(255,165,2,0.12);  color: var(--warning); border: 1px solid rgba(255,165,2,0.25); }
+.wifi-ch-busy     { background: rgba(255,71,87,0.12);  color: var(--danger);  border: 1px solid rgba(255,71,87,0.25); }
+
 /* ─── Controladores (drivers) ───────────────────────────────────────────── */
 .drv-list { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; }
 

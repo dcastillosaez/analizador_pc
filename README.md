@@ -1,6 +1,8 @@
 # PC Guardian
 
-Herramienta de diagnóstico local para Windows 10/11 con interfaz web. Analiza el estado del sistema e informa en lenguaje claro, sin jerga técnica. **Solo lectura** — no modifica nada sin permiso explícito del usuario (salvo actualizar paquetes con winget o limpiar temporales, ambas acciones requieren clic manual).
+Herramienta de diagnóstico local para Windows 10/11 con interfaz web. Analiza el estado del sistema e informa en lenguaje claro, sin jerga técnica. **Solo lectura** — no modifica nada sin permiso explícito del usuario.
+
+> © 2026 David Castillo
 
 ---
 
@@ -40,87 +42,104 @@ INSTALAR_Y_EJECUTAR.bat
 
 ## Módulos de análisis
 
-El escaneo completo se lanza con "Escanear Sistema". Cada módulo también se puede relanzar individualmente desde su vista en el sidebar.
+El escaneo completo se lanza con **Escanear Sistema**. Cada módulo también se puede relanzar individualmente desde su vista en el sidebar.
 
 ### 1. Hardware — `analyzer/hardware.py`
 CPU, RAM y disco C:\ via `psutil`. Umbrales: warn ≥ 70 % / danger ≥ 90 %.
 
 ### 2. Arranque — `analyzer/startup.py`
-Lee las tres claves `Run` del registro. Marca como peligrosas las entradas que arrancan desde `%Temp%` o `AppData\Roaming`; como advertencia, apps pesadas conocidas (Spotify, Discord, Steam).
+Lee las claves `Run` del registro. Marca como peligrosas las entradas desde `%Temp%` o `AppData\Roaming`; como advertencia, apps pesadas conocidas.
 
 ### 3. Seguridad — `analyzer/security.py`
-Detecta procesos ejecutándose desde rutas temporales, nombres con entropía de Shannon alta (ratio de vocales < 15 %) y duplicados de procesos críticos del sistema (`lsass.exe`, `csrss.exe`…).
+Detecta procesos desde rutas temporales, nombres con entropía de Shannon alta y duplicados de procesos críticos del sistema.
 
 ### 4. Controladores — `analyzer/drivers.py`
-`Get-WmiObject Win32_PnPSignedDriver` para drivers sin firma + lectura del registro `Uninstall\*` para software sin publisher.
+`Win32_PnPSignedDriver` para drivers sin firma. Muestra categoría del dispositivo y su ubicación exacta en el Administrador de dispositivos. Botones **Actualizar** (`pnputil /scan-devices`) y **Desinstalar** (`pnputil /remove-device`) por controlador.
 
 ### 5. Protección — `analyzer/protection.py`
-Antivirus via `Get-CimInstance AntiVirusProduct` y firewall via `netsh advfirewall` (más rápido que `Get-NetFirewallProfile`). Ambas consultas en paralelo.
+Antivirus via `Get-CimInstance AntiVirusProduct` y firewall via `netsh advfirewall`, en paralelo.
 
 ### 6. Red — `analyzer/network.py`
-Puertos escuchando fuera del rango seguro (`psutil.net_connections`) y entradas no estándar en `C:\Windows\System32\drivers\etc\hosts`.
+Puertos escuchando fuera del rango seguro y entradas no estándar en el archivo `hosts`.
 
 ### 7. Mantenimiento — `analyzer/maintenance.py`
-Estado SMART del disco (`Get-PhysicalDisk`), uptime del sistema (alerta si > 7 días sin reiniciar) y tareas programadas habilitadas (`schtasks /query`). Las dos últimas en paralelo.
+Estado SMART del disco, uptime (alerta si > 7 días sin reiniciar) y tareas programadas habilitadas.
 
-### 8. Actualizaciones — `analyzer/updates.py`
-```
-winget list --upgrade-available --disable-interactivity --accept-source-agreements
-```
-Usa la caché local (sin refrescar fuentes). El parser reconoce encabezados en español e inglés. Cada programa tiene un botón "Actualizar" individual.
+### 8. Actualizaciones de software — `analyzer/updates.py`
+`winget list --upgrade-available`. Parser bilingüe (español/inglés). Botón **Actualizar** individual y botón **Actualizar todo** con progreso y errores inline por paquete.
 
-### 9. Conectividad — `analyzer/connectivity.py`
-Resolución DNS, acceso HTTP a internet, latencia a 8.8.8.8 y latencia al router (detectado via `route print`). Test de velocidad bajo demanda: descarga ~10 MB desde `speed.cloudflare.com` y calcula Mbps.
+### 9. Actualizaciones de Windows — `analyzer/wupdates.py`
+Búsqueda bajo demanda via COM API (`Microsoft.Update.Session`). Muestra severidad, número KB con enlace al soporte de Microsoft, descripción técnica y botón **Aplicar actualización** por cada entrada.
 
-### 10. Energía y Temperatura — `analyzer/energy.py`
-- **Plan de energía:** `powercfg /getactivescheme` — avisa si está en "Ahorro de energía".
-- **Batería:** `psutil.sensors_battery()` + `powercfg /batteryreport` para salud (capacidad diseño vs. actual).
-- **Temperaturas:** OpenHardwareMonitor WMI (`root\OpenHardwareMonitor`) si está en ejecución; fallback a zonas ACPI (`root\WMI`).
+### 10. Conectividad — `analyzer/connectivity.py`
+Resolución DNS (con servidores configurados identificados por proveedor), acceso HTTP, latencia y gateway. Test de velocidad bajo demanda con fallback automático entre varios servidores públicos (Hetzner, OVH, Tele2).
 
-### 11. Privacidad y Limpieza — `analyzer/privacy.py`
-- **Telemetría:** nivel configurado en `HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection`.
-- **Permisos:** acceso global a cámara, micrófono y ubicación via `CapabilityAccessManager\ConsentStore`.
-- **Temporales:** tamaño de `%TEMP%`, `C:\Windows\Temp` y Prefetch con botón "Limpiar ahora".
-- **BSODs:** volcados `.dmp` en `C:\Windows\Minidump` de los últimos 30 días.
-- **Eventos críticos:** `Get-WinEvent` niveles 1 y 2 del log System (últimas 72 h), un item por evento con proveedor, mensaje y timestamp.
+### 11. Analizador WiFi — `analyzer/wifi.py`
+Escaneo via `netsh wlan show networks mode=bssid`. Muestra red conectada con señal, canal, protocolo y velocidad de enlace. Tabla de todas las redes cercanas con barras de señal, banda, protocolo y seguridad. Detecta colisiones de canal y sugiere el canal óptimo en 2.4 GHz.
 
-### 12. Monitor de Rendimiento — `analyzer/performance.py`
-No forma parte del escaneo general. Se activa desde su vista en el sidebar. Polling cada 2 segundos a `/api/perf/snapshot`. Muestra CPU, RAM, disco y GPU (si OHM está activo) con sparklines canvas sin librerías externas.
+### 12. Certificados del sistema — `analyzer/certs.py`
+Consulta los almacenes `LocalMachine\My`, `LocalMachine\Root`, `LocalMachine\CA` y `CurrentUser\My`. Muestra certificados caducados o que caducan en menos de 90 días con emisor, ruta del almacén y huella digital. Botón **Eliminar** para certificados caducados (requiere admin).
+
+### 13. Energía y Temperatura — `analyzer/energy.py`
+Plan de energía activo, salud de batería (`powercfg /batteryreport`) y temperaturas via OpenHardwareMonitor WMI o zonas ACPI.
+
+### 14. Privacidad y Limpieza — `analyzer/privacy.py`
+Telemetría, permisos de cámara/micrófono/ubicación, temporales con botón de limpieza, BSODs recientes y eventos críticos del sistema (últimas 72 h).
+
+### 15. Monitor de Rendimiento — `analyzer/performance.py`
+On-demand desde el sidebar. Polling cada 2 s a `/api/perf/snapshot`. Sparklines de CPU, RAM, disco y GPU sin librerías externas.
+
+### 16. Servicios — `analyzer/services.py`
+Servicios automáticos en ejecución con detección de rutas sospechosas.
+
+### 17. Inventario — `analyzer/inventory.py`
+CPU, GPU, RAM slot a slot, placa base y BIOS via WMI.
+
+---
+
+## Exportar informe
+
+El botón **Exportar informe** en la barra superior genera un archivo `.html` autocontenido con todos los módulos escaneados, tablas por módulo y estados con color. Se descarga directamente desde el navegador sin pasar por el servidor.
 
 ---
 
 ## Arquitectura de la interfaz
 
 ```
-┌──────────────────┬──────────────────────────────────────────┐
-│ SIDEBAR (240 px) │ TOPBAR: breadcrumb | estado | [Scan]     │
-│                  ├──────────────────────────────────────────┤
-│ ● Resumen        │                                          │
-│                  │  OVERVIEW: tiles con estado de cada      │
-│ SISTEMA          │  módulo. Clic → vista de módulo.         │
-│  Hardware    ●   │                                          │
-│  Arranque    ●   │  MÓDULO: card completo +                 │
-│  Drivers     ●   │  [← Resumen]  [Analizar módulo]          │
-│                  │                                          │
-│ SEGURIDAD        │                                          │
-│  Seguridad   ●   │                                          │
-│  Protección  ●   │                                          │
-│                  │                                          │
-│ RED              │                                          │
-│  Red         ●   │                                          │
-│  Conectividad●   │                                          │
-│                  │                                          │
-│ RENDIMIENTO      │                                          │
-│  Monitor     ●   │                                          │
-│  Energía     ●   │                                          │
-│                  │                                          │
-│ MANTENIMIENTO    │                                          │
-│  Mantenim.   ●   │                                          │
-│  Updates     ●   │                                          │
-│                  │                                          │
-│ PRIVACIDAD       │                                          │
-│  Privacidad  ●   │                                          │
-└──────────────────┴──────────────────────────────────────────┘
+┌──────────────────┬──────────────────────────────────────────────────┐
+│ SIDEBAR (240 px) │ TOPBAR: breadcrumb | [Exportar informe] [Scan]   │
+│                  ├──────────────────────────────────────────────────┤
+│ ● Resumen        │                                                  │
+│                  │  OVERVIEW: tiles con estado de cada módulo.      │
+│ SISTEMA          │  Clic → vista de módulo.                         │
+│  Hardware    ●   │                                                  │
+│  Arranque    ●   │  MÓDULO: card completo +                         │
+│  Drivers     ●   │  [← Resumen]  [Analizar módulo]                  │
+│  Inventario  ●   │                                                  │
+│  Servicios   ●   │                                                  │
+│                  │                                                  │
+│ SEGURIDAD        │                                                  │
+│  Seguridad   ●   │                                                  │
+│  Protección  ●   │                                                  │
+│                  │                                                  │
+│ RED              │                                                  │
+│  Red         ●   │                                                  │
+│  Conectividad●   │                                                  │
+│  Certificados●   │                                                  │
+│  WiFi        ●   │                                                  │
+│                  │                                                  │
+│ RENDIMIENTO      │                                                  │
+│  Monitor     ●   │                                                  │
+│  Energía     ●   │                                                  │
+│                  │                                                  │
+│ MANTENIMIENTO    │                                                  │
+│  Mantenim.   ●   │                                                  │
+│  Updates     ●   │                                                  │
+│  Updates Win ●   │                                                  │
+│                  │                                                  │
+│ PRIVACIDAD       │                                                  │
+│  Privacidad  ●   │                                                  │
+└──────────────────┴──────────────────────────────────────────────────┘
 ```
 
 `●` = dot de estado (gris pendiente / verde ok / naranja warning / rojo danger).
@@ -139,16 +158,25 @@ El sidebar colapsa a 64 px (solo iconos con tooltip). En móvil es un drawer off
 | GET | `/api/scan/protection` | Antivirus y firewall |
 | GET | `/api/scan/network` | Puertos y archivo hosts |
 | GET | `/api/scan/maintenance` | SMART, uptime, tareas |
-| GET | `/api/scan/updates` | Paquetes desactualizados |
-| GET | `/api/scan/connectivity` | Ping, DNS, latencia |
+| GET | `/api/scan/updates` | Paquetes desactualizados (winget) |
+| GET | `/api/scan/wupdates` | Actualizaciones Windows (COM API) |
+| GET | `/api/scan/connectivity` | DNS, ping, latencia, gateway |
 | GET | `/api/scan/energy` | Plan de energía, batería, temps |
 | GET | `/api/scan/privacy` | Telemetría, permisos, temporales, eventos |
-| GET | `/api/perf/snapshot` | Snapshot en tiempo real |
-| GET | `/api/connectivity/speedtest` | Test de descarga Cloudflare |
+| GET | `/api/scan/wifi` | Redes WiFi cercanas |
+| GET | `/api/scan/certs` | Certificados del almacén de Windows |
+| GET | `/api/scan/inventory` | Inventario de hardware detallado |
+| GET | `/api/scan/services` | Servicios de Windows |
+| GET | `/api/perf/snapshot` | Snapshot en tiempo real (polling 2 s) |
+| GET | `/api/connectivity/speedtest` | Test de velocidad de descarga |
 | POST | `/api/update/<package_id>` | Actualiza paquete con winget ⚠️ |
+| POST | `/api/wupdate/apply/<update_id>` | Aplica actualización de Windows ⚠️ |
+| POST | `/api/driver/update` | Busca actualización de controlador ⚠️ |
+| POST | `/api/driver/uninstall` | Desinstala dispositivo ⚠️ |
+| POST | `/api/cert/delete` | Elimina certificado del almacén ⚠️ |
 | POST | `/api/privacy/clean-temp` | Vacía carpetas temporales ⚠️ |
 
-⚠️ Operaciones de escritura — requieren acción explícita del usuario.
+⚠️ Operaciones de escritura — requieren acción explícita del usuario en la interfaz.
 
 ---
 

@@ -20,6 +20,8 @@ from analyzer.connectivity  import analyze_connectivity, run_speedtest
 from analyzer.privacy       import analyze_privacy, clean_temp
 from analyzer.inventory     import analyze_inventory
 from analyzer.wupdates      import check_windows_updates, apply_windows_update
+from analyzer.wifi          import analyze_wifi
+from analyzer.certs         import analyze_certs, delete_cert
 from analyzer.services      import analyze_services
 
 if getattr(sys, "frozen", False):
@@ -111,6 +113,19 @@ def perf_snapshot_route():
 @app.route("/api/scan/inventory")
 def scan_inventory():
     return jsonify(analyze_inventory())
+
+@app.route("/api/scan/certs")
+def scan_certs():
+    return jsonify(analyze_certs())
+
+@app.route("/api/cert/delete", methods=["POST"])
+def do_cert_delete():
+    body = request.get_json(silent=True) or {}
+    return jsonify(delete_cert(body.get("store_path",""), body.get("thumbprint","")))
+
+@app.route("/api/scan/wifi")
+def scan_wifi():
+    return jsonify(analyze_wifi())
 
 @app.route("/api/scan/wupdates")
 def scan_wupdates():

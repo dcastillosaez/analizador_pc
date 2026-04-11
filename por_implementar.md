@@ -15,7 +15,7 @@
 
 - [x] **Inventario de hardware** — CPU, GPU, RAM slot a slot, placa base y BIOS vía WMI (módulo manual)
 - [x] **Servicios de Windows** — servicios automáticos en ejecución con detección de rutas sospechosas
-- [x] **Actualizaciones de Windows** — búsqueda bajo demanda vía COM API de Windows Update, clasificadas por severidad
+- [x] **Actualizaciones de Windows** — búsqueda bajo demanda vía COM API de Windows Update, clasificadas por severidad; botón aplicar por actualización
 - [x] **Puntuación global del PC** — número resumen 0-100 calculado a partir de todos los módulos analizados
 - [ ] **Comparar escaneos** — diff visual entre el escaneo actual y uno guardado anteriormente; muestra qué empeoró, mejoró o es nuevo
 
@@ -48,11 +48,11 @@
 
 ## Conectividad
 
-- [x] **Test de velocidad de internet** — descarga ~10 MB desde Cloudflare, calcula Mbps y latencia
+- [x] **Test de velocidad de internet** — descarga ~10 MB desde servidores públicos (Hetzner, OVH, Tele2), calcula Mbps y latencia
 - [x] **Puertos abiertos** — puertos escuchando fuera del rango seguro con proceso asociado (cubierto en tarjeta Red)
-- [ ] **Analizador WiFi** — redes cercanas, canal, señal, frecuencia y colisión de canales vía `netsh wlan show networks`
+- [x] **Analizador WiFi** — redes cercanas, canal, señal, frecuencia y colisión de canales vía `netsh wlan show networks`
+- [x] **Certificados del sistema** — certificados del almacén de Windows próximos a caducar o ya caducados; opción de eliminar
 - [ ] **Conexiones activas salientes** — qué procesos tienen TCP establecido hacia el exterior ahora mismo, con IP remota y hostname resuelto
-- [ ] **Certificados del sistema** — certificados del almacén de Windows próximos a caducar o ya caducados
 
 ---
 
@@ -63,10 +63,24 @@
 
 ---
 
+## Controladores
+
+- [x] **Categoría y ubicación en Administrador de dispositivos** — tipo de dispositivo y ruta exacta por cada controlador con aviso
+- [x] **Actualizar controlador individual** — botón por controlador que lanza `pnputil /scan-devices`
+- [x] **Desinstalar controlador individual** — botón por controlador que lanza `pnputil /remove-device`
+
+---
+
+## Actualizaciones de software
+
+- [x] **Actualizar todos los programas** — botón "Actualizar todo" con progreso por paquete y mensajes de error inline
+
+---
+
 ## UX / utilidad general
 
 - [x] **Puntuación global del PC** — widget en el overview con score 0-100 y breakdown por categoría
-- [ ] **Exportar informe** — generar PDF o HTML autocontenido con el resultado completo del último escaneo
+- [x] **Exportar informe** — genera HTML autocontenido con el resultado completo del último escaneo; descarga directa desde el navegador
 - [ ] **Historial de escaneos** — guardar cada análisis en SQLite y mostrar línea de tiempo; ver si la salud mejora o empeora
 - [ ] **Notificaciones programadas** — escaneo silencioso al arrancar Windows con notificación toast si hay problemas críticos (tray icon via `pystray`)
 - [ ] **Modo claro / oscuro** — toggle de tema persistente en localStorage

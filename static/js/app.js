@@ -22,6 +22,8 @@ const MODULE_META = {
   inventory:    { label: 'Inventario',       group: 'Sistema',       emoji: '🖥️', color: '#636e72' },
   services:     { label: 'Servicios',        group: 'Sistema',       emoji: '⚙️', color: '#00b894' },
   wupdates:     { label: 'Updates Windows',  group: 'Mantenimiento', emoji: '🪟', color: '#0078d4' },
+  wifi:         { label: 'Analizador WiFi', group: 'Red',           emoji: '📶', color: '#00cec9' },
+  certs:        { label: 'Certificados',   group: 'Red',           emoji: '🏅', color: '#fdcb6e' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -167,6 +169,8 @@ function _scanBtnLabel(id) {
   if (id === 'updates')   return ' Analizar';
   if (id === 'inventory') return ' Escanear inventario';
   if (id === 'wupdates')  return ' Comprobar';
+  if (id === 'wifi')      return ' Analizar';
+  if (id === 'certs')     return ' Analizar';
   return ' Analizar módulo';
 }
 
@@ -176,6 +180,8 @@ async function _triggerModuleScan(id) {
   if (id === 'perf')     { if (typeof togglePerf   === 'function') togglePerf();   return; }
   if (id === 'updates')  { if (typeof scanUpdates  === 'function') scanUpdates();  return; }
   if (id === 'wupdates') { if (typeof checkWindowsUpdates === 'function') checkWindowsUpdates(); return; }
+  if (id === 'wifi')     { if (typeof scanWifi  === 'function') scanWifi();  return; }
+  if (id === 'certs')    { if (typeof scanCerts === 'function') scanCerts(); return; }
 
   if (btn) {
     btn.disabled = true;
@@ -407,6 +413,14 @@ function renderCard(id, data) {
     body.innerHTML = renderWupdates(data);
     const btnW = document.getElementById('btn-wupdates');
     if (btnW) btnW.style.display = '';
+  } else if (id === 'wifi') {
+    body.innerHTML = renderWifi(data);
+    const btnWifi = document.getElementById('btn-wifi');
+    if (btnWifi) btnWifi.style.display = '';
+  } else if (id === 'certs') {
+    body.innerHTML = renderCerts(data);
+    const btnC = document.getElementById('btn-certs');
+    if (btnC) btnC.style.display = '';
   } else {
     body.innerHTML = renderGeneric(data);
   }
@@ -1356,6 +1370,267 @@ function _injectScoreWidget(score, color, label, barPct, moduleCount) {
         </div>
       </div>
     </div>`;
+}
+
+/* ── Certificados del sistema ────────────────────────────────────────────── */
+function renderCerts(data) {
+  const total = data.total ? ` (${data.total} analizados)` : '';
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px">
+        <span class="empty-emoji">✅</span><p>Todos los certificados están vigentes${total}.</p>
+      </div>`;
+  }
+  const rows = data.items.map((item, idx) => {
+    const expColor = item.status === 'danger' ? 'var(--danger)' : 'var(--warning)';
+    const deleteBtn = item.can_delete
+      ? `<button class="btn-cert-delete" id="certdel-${idx}"
+           onclick="doDeleteCert('${escHtml(item.store_path)}','${escHtml(item.thumbprint)}',${idx})"
+           title="Eliminar certificado caducado">
+           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+             <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+           </svg> Eliminar
+         </button>` : '';
+    return `<div class="cert-row ${item.status}" id="cert-row-${idx}">
+      <div class="cert-row-left">
+        <span class="cert-status-dot" style="background:${expColor}"></span>
+        <div class="cert-info">
+          <div class="cert-name">${escHtml(item.name)}</div>
+          <div class="cert-detail">${escHtml(item.detail)}</div>
+          <div class="cert-store-path"><code>${escHtml(item.store_path || item.store || '')}</code></div>
+        </div>
+      </div>
+      <div class="cert-row-right">
+        <span class="cert-expires" style="color:${expColor}">${escHtml(item.message)}</span>
+        <span class="cert-date">${escHtml(item.expires || '')}</span>
+        ${deleteBtn}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="cert-list">${rows}</div>`;
+}
+
+async function doDeleteCert(storePath, thumbprint, idx) {
+  if (!confirm('¿Eliminar este certificado caducado?\n\nEsta acción es irreversible y requiere permisos de administrador.')) return;
+  const btn = document.getElementById(`certdel-${idx}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
+  try {
+    const res  = await fetch('/api/cert/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({store_path: storePath, thumbprint}) });
+    const data = await res.json();
+    if (data.success) {
+      const row = document.getElementById(`cert-row-${idx}`);
+      if (row) row.style.opacity = '0.35';
+      if (btn) { btn.textContent = '✓ Eliminado'; btn.style.color = 'var(--success)'; }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; btn.title = data.message; }
+      alert('No se pudo eliminar:\n\n' + data.message);
+    }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; }
+  }
+}
+
+async function scanCerts() {
+  const btn  = document.getElementById('btn-certs');
+  const body = document.getElementById('body-certs');
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`; }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🏅</span><p>Revisando certificados…</p></div>`;
+  try {
+    const data = await fetchModule('certs');
+    renderCard('certs', data);
+    scanResults['certs'] = data;
+    updateNavDot('certs', data.status);
+  } catch(e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg> Analizar`; }
+}
+
+/* ── Exportar informe HTML ────────────────────────────────────────────────── */
+function exportReport() {
+  const results = (typeof scanResults !== 'undefined' ? scanResults : {});
+  if (!Object.keys(results).length) {
+    alert('Primero ejecuta "Escanear Sistema" para tener datos que exportar.'); return;
+  }
+
+  const STATUS_LABEL = { ok: '✅ OK', warning: '⚠️ Aviso', danger: '🔴 Crítico' };
+  const date = new Date().toLocaleString('es-ES');
+
+  const sections = Object.entries(results).map(([id, data]) => {
+    if (!data || !data.title) return '';
+    const itemRows = (data.items || []).map(item => `
+      <tr class="s-${item.status}">
+        <td>${item.name || ''}</td>
+        <td>${STATUS_LABEL[item.status] || item.status}</td>
+        <td>${item.message || ''}</td>
+        <td>${item.value || ''}</td>
+        <td>${item.detail || ''}</td>
+      </tr>`).join('');
+    const table = itemRows ? `<table><thead><tr><th>Elemento</th><th>Estado</th><th>Mensaje</th><th>Valor</th><th>Detalle</th></tr></thead><tbody>${itemRows}</tbody></table>` : '';
+    return `<section>
+      <h2><span class="badge-${data.status}">${STATUS_LABEL[data.status] || ''}</span> ${data.title}</h2>
+      <p class="summary">${data.summary || ''}</p>
+      ${table}
+    </section>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<title>PC Guardian — Informe ${date}</title>
+<style>
+  body{font-family:Segoe UI,sans-serif;background:#0f1117;color:#e0e0e0;margin:0;padding:24px}
+  h1{color:#4f8ef7;margin-bottom:4px}
+  .meta{color:#888;font-size:13px;margin-bottom:32px}
+  section{background:#1a1d27;border:1px solid #2a2d3a;border-radius:10px;padding:20px;margin-bottom:16px}
+  h2{margin:0 0 8px;font-size:16px;display:flex;align-items:center;gap:10px}
+  .summary{color:#aaa;font-size:13px;margin:0 0 14px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;padding:6px 10px;background:#0f1117;color:#888;border-bottom:1px solid #2a2d3a}
+  td{padding:6px 10px;border-bottom:1px solid #1e2130}
+  tr.s-danger td{color:#ff6b7a} tr.s-warning td{color:#ffa94d} tr.s-ok td{color:#69db7c}
+  .badge-ok{color:#69db7c} .badge-warning{color:#ffa94d} .badge-danger{color:#ff6b7a}
+  footer{text-align:center;color:#555;font-size:12px;margin-top:32px}
+</style></head><body>
+<h1>PC Guardian — Informe de diagnóstico</h1>
+<p class="meta">Generado el ${date} · © 2026 David Castillo</p>
+${sections}
+<footer>PC Guardian · Informe generado automáticamente</footer>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `PCGuardian_${new Date().toISOString().slice(0,10)}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ── Analizador WiFi ─────────────────────────────────────────────────────── */
+function _signalBars(pct) {
+  const bars = 4;
+  const filled = Math.round((pct / 100) * bars);
+  const color  = pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)';
+  let svg = `<svg viewBox="0 0 20 14" width="20" height="14" style="vertical-align:middle">`;
+  for (let i = 0; i < bars; i++) {
+    const h = 3 + i * 3;
+    const y = 14 - h;
+    const c = i < filled ? color : 'rgba(255,255,255,0.15)';
+    svg += `<rect x="${i * 5}" y="${y}" width="4" height="${h}" rx="1" fill="${c}"/>`;
+  }
+  return svg + '</svg>';
+}
+
+function renderWifi(data) {
+  if (!data.networks || data.networks.length === 0) {
+    return `
+      <div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px">
+        <span class="empty-emoji">📶</span>
+        <p>${escHtml(data.summary)}</p>
+      </div>`;
+  }
+
+  // — Red conectada —
+  const conn = data.connected || {};
+  let connBlock = '';
+  if (conn.ssid) {
+    const sig = conn.signal || 0;
+    const sigColor = sig >= 70 ? 'var(--success)' : sig >= 40 ? 'var(--warning)' : 'var(--danger)';
+    connBlock = `
+      <div class="wifi-connected-card">
+        <div class="wifi-conn-header">
+          <span class="wifi-conn-dot" style="background:${sigColor}"></span>
+          <span class="wifi-conn-ssid">${escHtml(conn.ssid)}</span>
+          <span class="wifi-conn-signal" style="color:${sigColor}">${_signalBars(sig)} ${sig}%</span>
+        </div>
+        <div class="wifi-conn-meta">
+          ${conn.channel  ? `<span class="wifi-meta-pill">Canal ${escHtml(String(conn.channel))}</span>` : ''}
+          ${conn.radio_type ? `<span class="wifi-meta-pill">${escHtml(conn.radio_type)}</span>` : ''}
+          ${conn.auth     ? `<span class="wifi-meta-pill">${escHtml(conn.auth)}</span>` : ''}
+          ${conn.rx_mbps  ? `<span class="wifi-meta-pill">↓ ${escHtml(conn.rx_mbps)} Mbps</span>` : ''}
+          ${conn.tx_mbps  ? `<span class="wifi-meta-pill">↑ ${escHtml(conn.tx_mbps)} Mbps</span>` : ''}
+          ${conn.adapter  ? `<span class="wifi-meta-pill wifi-adapter">${escHtml(conn.adapter)}</span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  // — Diagnóstico —
+  const diagBlock = (data.items && data.items.length)
+    ? `<div class="wifi-diag">${data.items.map(i => itemHTML(i)).join('')}</div>`
+    : '';
+
+  // — Tabla de redes —
+  const chCount = data.channel_count || {};
+  const myBssid = (conn.bssid || '').toLowerCase();
+  const rows = data.networks.map(net => {
+    const isMe = net.bssid.toLowerCase() === myBssid;
+    const sig  = net.signal;
+    const sigColor = sig >= 70 ? 'var(--success)' : sig >= 40 ? 'var(--warning)' : 'var(--danger)';
+    const chCnt = chCount[net.channel] || 1;
+    const chClass = chCnt > 3 ? 'wifi-ch-busy' : chCnt > 1 ? 'wifi-ch-moderate' : 'wifi-ch-free';
+    const openNet = ['open','abierta','abierto',''].includes((net.auth || '').toLowerCase());
+    const lockIcon = openNet
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" width="12" height="12" title="Red abierta"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" width="12" height="12"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+    return `
+      <tr class="${isMe ? 'wifi-row-me' : ''}">
+        <td class="wifi-td-ssid">${isMe ? '▶ ' : ''}${escHtml(net.ssid || '(oculta)')}</td>
+        <td class="wifi-td-sig" style="color:${sigColor}">${_signalBars(sig)} ${sig}%</td>
+        <td class="wifi-td-ch"><span class="wifi-ch-badge ${chClass}">CH ${net.channel || '?'}</span></td>
+        <td class="wifi-td-band">${escHtml(net.band || '—')}</td>
+        <td class="wifi-td-radio">${escHtml(net.radio || '—')}</td>
+        <td class="wifi-td-lock" title="${openNet ? 'Red abierta' : escHtml(net.auth)}">${lockIcon}</td>
+      </tr>`;
+  }).join('');
+
+  const table = `
+    <div class="wifi-table-wrap">
+      <table class="wifi-table">
+        <thead>
+          <tr>
+            <th>Red (SSID)</th><th>Señal</th><th>Canal</th>
+            <th>Banda</th><th>Protocolo</th><th>Seguridad</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    ${connBlock}
+    ${diagBlock}
+    <h4 class="wifi-section-title">Redes detectadas (${data.networks.length})</h4>
+    ${table}`;
+}
+
+async function scanWifi() {
+  const btn  = document.getElementById('btn-wifi');
+  const body = document.getElementById('body-wifi');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Escaneando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">📶</span><p>Escaneando redes WiFi cercanas…</p></div>`;
+
+  try {
+    const data = await fetchModule('wifi');
+    renderCard('wifi', data);
+    scanResults['wifi'] = data;
+    updateNavDot('wifi', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error al escanear WiFi: ${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+      <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+      <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+    </svg> Analizar`;
+  }
 }
 
 /* ── Renderer de Actualizaciones Windows ─────────────────────────────────── */
