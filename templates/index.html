@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PC Guardian — Diagnóstico del Sistema</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}" />
+</head>
+<body>
+
+  <!-- Fondo animado -->
+  <div class="bg-scene" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <!-- Overlay móvil para cerrar sidebar -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <div class="app-shell" id="app-shell">
+
+    <!-- ── SIDEBAR ──────────────────────────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar" role="navigation" aria-label="Navegación principal">
+
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <div class="brand-icon-sm">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <polyline points="9 12 11 14 15 10"/>
+            </svg>
+          </div>
+          <span class="sidebar-brand-label">PC Guardian</span>
+        </div>
+        <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" onclick="toggleSidebar()" aria-label="Colapsar menú" title="Colapsar menú">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+
+        <!-- Resumen -->
+        <div class="nav-item" id="nav-item-overview" onclick="navigateTo('overview')" tabindex="0" title="Resumen" role="button" aria-label="Vista general">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Resumen</span>
+        </div>
+
+        <!-- Grupo: Sistema -->
+        <div class="nav-group-label">Sistema</div>
+
+        <div class="nav-item" id="nav-item-hardware" onclick="navigateTo('hardware')" tabindex="0" title="Hardware" role="button" aria-label="Hardware">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+              <rect x="9" y="9" width="6" height="6"/>
+              <line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/>
+              <line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/>
+              <line x1="20" y1="9" x2="22" y2="9"/><line x1="20" y1="14" x2="22" y2="14"/>
+              <line x1="2" y1="9" x2="4" y2="9"/><line x1="2" y1="14" x2="4" y2="14"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Hardware</span>
+          <span class="nav-dot dot-pending" id="nav-dot-hardware"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-startup" onclick="navigateTo('startup')" tabindex="0" title="Arranque" role="button" aria-label="Arranque">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Arranque</span>
+          <span class="nav-dot dot-pending" id="nav-dot-startup"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-inventory" onclick="navigateTo('inventory')" tabindex="0" title="Inventario de Hardware" role="button" aria-label="Inventario de Hardware">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Inventario</span>
+          <span class="nav-dot dot-pending" id="nav-dot-inventory"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-services" onclick="navigateTo('services')" tabindex="0" title="Servicios de Windows" role="button" aria-label="Servicios de Windows">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Servicios</span>
+          <span class="nav-dot dot-pending" id="nav-dot-services"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-drivers" onclick="navigateTo('drivers')" tabindex="0" title="Controladores" role="button" aria-label="Controladores">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Controladores</span>
+          <span class="nav-dot dot-pending" id="nav-dot-drivers"></span>
+        </div>
+
+        <!-- Grupo: Seguridad -->
+        <div class="nav-group-label">Seguridad</div>
+
+        <div class="nav-item" id="nav-item-security" onclick="navigateTo('security')" tabindex="0" title="Seguridad" role="button" aria-label="Seguridad">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <circle cx="12" cy="16" r=".5" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Seguridad</span>
+          <span class="nav-dot dot-pending" id="nav-dot-security"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-protection" onclick="navigateTo('protection')" tabindex="0" title="Protección" role="button" aria-label="Protección">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Protección</span>
+          <span class="nav-dot dot-pending" id="nav-dot-protection"></span>
+        </div>
+
+        <!-- Grupo: Red -->
+        <div class="nav-group-label">Red</div>
+
+        <div class="nav-item" id="nav-item-network" onclick="navigateTo('network')" tabindex="0" title="Red" role="button" aria-label="Red">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="6" height="6" rx="1"/>
+              <rect x="16" y="2" width="6" height="6" rx="1"/>
+              <rect x="9" y="16" width="6" height="6" rx="1"/>
+              <path d="M5 8v4c0 1 .5 2 2 2h10c1.5 0 2-1 2-2V8"/>
+              <line x1="12" y1="14" x2="12" y2="16"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Red</span>
+          <span class="nav-dot dot-pending" id="nav-dot-network"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-connectivity" onclick="navigateTo('connectivity')" tabindex="0" title="Conectividad" role="button" aria-label="Conectividad">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+              <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+              <circle cx="12" cy="20" r="1" fill="currentColor"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Conectividad</span>
+          <span class="nav-dot dot-pending" id="nav-dot-connectivity"></span>
+        </div>
+
+        <!-- Grupo: Rendimiento -->
+        <div class="nav-group-label">Rendimiento</div>
+
+        <div class="nav-item" id="nav-item-perf" onclick="navigateTo('perf')" tabindex="0" title="Monitor vivo" role="button" aria-label="Monitor de rendimiento">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Monitor vivo</span>
+          <span class="nav-dot dot-pending" id="nav-dot-perf"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-energy" onclick="navigateTo('energy')" tabindex="0" title="Energía y Temp." role="button" aria-label="Energía y temperatura">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Energía y Temp.</span>
+          <span class="nav-dot dot-pending" id="nav-dot-energy"></span>
+        </div>
+
+        <!-- Grupo: Mantenimiento -->
+        <div class="nav-group-label">Mantenimiento</div>
+
+        <div class="nav-item" id="nav-item-maintenance" onclick="navigateTo('maintenance')" tabindex="0" title="Mantenimiento" role="button" aria-label="Mantenimiento">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14M12 2v2M12 20v2M2 12h2M20 12h2"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Mantenimiento</span>
+          <span class="nav-dot dot-pending" id="nav-dot-maintenance"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-updates" onclick="navigateTo('updates')" tabindex="0" title="Actualizaciones" role="button" aria-label="Actualizaciones">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Actualizaciones</span>
+          <span class="nav-dot dot-pending" id="nav-dot-updates"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-wupdates" onclick="navigateTo('wupdates')" tabindex="0" title="Actualizaciones Windows" role="button" aria-label="Actualizaciones Windows">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M12 8v4l3 3"/>
+              <path d="M8 12H3M12 3v5"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Updates Windows</span>
+          <span class="nav-dot dot-pending" id="nav-dot-wupdates"></span>
+        </div>
+
+        <!-- Grupo: Privacidad -->
+        <div class="nav-group-label">Privacidad</div>
+
+        <div class="nav-item" id="nav-item-privacy" onclick="navigateTo('privacy')" tabindex="0" title="Privacidad y Limpieza" role="button" aria-label="Privacidad y Limpieza">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <line x1="8" y1="11" x2="16" y2="11"/>
+              <line x1="8" y1="15" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Privacidad y Limpieza</span>
+          <span class="nav-dot dot-pending" id="nav-dot-privacy"></span>
+        </div>
+
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <span class="sidebar-footer-label" id="sidebar-last-scan">Sin analizar</span>
+      </div>
+
+    </aside>
+
+    <!-- ── MAIN WRAP ────────────────────────────────────────────────────── -->
+    <div class="main-wrap">
+
+      <!-- Topbar -->
+      <header class="topbar" role="banner">
+        <div class="topbar-left">
+          <button class="topbar-hamburger" onclick="toggleSidebar()" aria-label="Abrir menú">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <div class="topbar-brand">
+            <div class="brand-icon-sm topbar-brand-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+            </div>
+            <span class="topbar-brand-label">PC Guardian</span>
+          </div>
+          <div class="topbar-breadcrumb">
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-current" id="breadcrumb-label">Resumen</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="status-pill-bar" id="status-pill-bar">
+            <div id="overall-pill" class="overall-pill hidden">
+              <span class="overall-dot"></span>
+              <span class="overall-label"></span>
+            </div>
+          </div>
+          <button id="scan-btn" class="btn-scan" onclick="startScan()">
+            <svg class="btn-icon scan-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <span class="spin-icon hidden">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+            </span>
+            <span class="btn-label">Escanear Sistema</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Sección de progreso (dentro de main-wrap, encima del content-area) -->
+      <div id="progress-section" class="progress-section hidden">
+        <div class="progress-card">
+
+          <div class="progress-top">
+            <span id="progress-label" class="progress-label">Iniciando análisis…</span>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span id="progress-pct" class="progress-pct">0 %</span>
+              <button class="btn-terminal-toggle" id="btn-terminal" onclick="toggleTerminal()">Ver detalles ▾</button>
+            </div>
+          </div>
+          <div class="progress-track">
+            <div id="progress-fill" class="progress-fill" style="width:0%"></div>
+          </div>
+
+          <div class="progress-body">
+            <div class="progress-steps">
+              <div class="pstep" id="pstep-hardware">
+                <div class="pstep-dot"></div><span>Hardware</span>
+                <span class="pstep-time" id="ptime-hardware"></span>
+              </div>
+              <div class="pstep" id="pstep-startup">
+                <div class="pstep-dot"></div><span>Arranque</span>
+                <span class="pstep-time" id="ptime-startup"></span>
+              </div>
+              <div class="pstep" id="pstep-security">
+                <div class="pstep-dot"></div><span>Seguridad</span>
+                <span class="pstep-time" id="ptime-security"></span>
+              </div>
+              <div class="pstep" id="pstep-drivers">
+                <div class="pstep-dot"></div><span>Controladores</span>
+                <span class="pstep-time" id="ptime-drivers"></span>
+              </div>
+              <div class="pstep" id="pstep-protection">
+                <div class="pstep-dot"></div><span>Protección</span>
+                <span class="pstep-time" id="ptime-protection"></span>
+              </div>
+              <div class="pstep" id="pstep-network">
+                <div class="pstep-dot"></div><span>Red</span>
+                <span class="pstep-time" id="ptime-network"></span>
+              </div>
+              <div class="pstep" id="pstep-maintenance">
+                <div class="pstep-dot"></div><span>Mantenimiento</span>
+                <span class="pstep-time" id="ptime-maintenance"></span>
+              </div>
+              <div class="pstep" id="pstep-updates">
+                <div class="pstep-dot"></div><span>Actualizaciones</span>
+                <span class="pstep-time" id="ptime-updates"></span>
+              </div>
+              <div class="pstep" id="pstep-connectivity">
+                <div class="pstep-dot"></div><span>Conectividad</span>
+                <span class="pstep-time" id="ptime-connectivity"></span>
+              </div>
+              <div class="pstep" id="pstep-energy">
+                <div class="pstep-dot"></div><span>Energía y Temp.</span>
+                <span class="pstep-time" id="ptime-energy"></span>
+              </div>
+              <div class="pstep" id="pstep-privacy">
+                <div class="pstep-dot"></div><span>Privacidad</span>
+                <span class="pstep-time" id="ptime-privacy"></span>
+              </div>
+              <div class="pstep" id="pstep-services">
+                <div class="pstep-dot"></div><span>Servicios</span>
+                <span class="pstep-time" id="ptime-services"></span>
+              </div>
+            </div>
+
+            <div id="terminal-panel" class="terminal-panel hidden">
+              <div class="terminal-header">
+                <span class="terminal-dot t-red"></span>
+                <span class="terminal-dot t-yellow"></span>
+                <span class="terminal-dot t-green"></span>
+                <span class="terminal-title">PC Guardian — Log de análisis</span>
+              </div>
+              <div class="terminal-body" id="terminal-body"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Área de contenido principal -->
+      <main class="content-area" id="content-area" role="main">
+        <!-- JS rellena esta área: overview o module detail -->
+      </main>
+
+      <!-- Barra de resumen (legacy, se mantiene oculta hasta que haya escaneo completo) -->
+      <div id="summary-bar" class="summary-bar hidden">
+        <div class="summary-inner">
+          <div class="summary-icon-wrap" id="summary-icon-wrap"></div>
+          <div class="summary-copy">
+            <h3 id="summary-title"></h3>
+            <p id="summary-desc"></p>
+          </div>
+          <div class="summary-chips" id="summary-chips"></div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div class="footer-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <rect x="3" y="11" width="18" height="11" rx="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Solo lectura — esta herramienta no modifica tu sistema sin tu permiso
+        </div>
+        <span class="footer-copyright">
+          <span class="footer-copyright-symbol">©</span> 2026 David Castillo. Todos los derechos reservados.
+        </span>
+        <span id="last-scan-text" class="last-scan-text"></span>
+      </footer>
+
+    </div><!-- /.main-wrap -->
+
+  </div><!-- /.app-shell -->
+
+  <!-- Pool de tarjetas ocultas — el JS existente escribe en ellas por ID -->
+  <div id="cards-pool" style="display:none" aria-hidden="true">
+
+    <!-- Hardware -->
+    <div class="card" id="card-hardware">
+      <div class="card-header">
+        <div class="card-icon-wrap c-hardware">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"/>
+            <rect x="9" y="9" width="6" height="6"/>
+            <line x1="9" y1="2" x2="9" y2="4"/><line x1="15" y1="2" x2="15" y2="4"/>
+            <line x1="9" y1="20" x2="9" y2="22"/><line x1="15" y1="20" x2="15" y2="22"/>
+            <line x1="20" y1="9" x2="22" y2="9"/><line x1="20" y1="14" x2="22" y2="14"/>
+            <line x1="2" y1="9" x2="4" y2="9"/><line x1="2" y1="14" x2="4" y2="14"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Hardware</h2>
+          <p>CPU, RAM y Almacenamiento</p>
+        </div>
+        <div class="card-badge" id="badge-hardware"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-hardware">
+        <div class="empty-state"><span class="empty-emoji">📊</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Arranque -->
+    <div class="card" id="card-startup">
+      <div class="card-header">
+        <div class="card-icon-wrap c-startup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Arranque</h2>
+          <p>Programas de inicio del sistema</p>
+        </div>
+        <div class="card-badge" id="badge-startup"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-startup">
+        <div class="empty-state"><span class="empty-emoji">🚀</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Seguridad -->
+    <div class="card" id="card-security">
+      <div class="card-header">
+        <div class="card-icon-wrap c-security">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <circle cx="12" cy="16" r=".5" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Seguridad</h2>
+          <p>Amenazas y anomalías activas</p>
+        </div>
+        <div class="card-badge" id="badge-security"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-security">
+        <div class="empty-state"><span class="empty-emoji">🛡️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Protección -->
+    <div class="card" id="card-protection">
+      <div class="card-header">
+        <div class="card-icon-wrap c-protection">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Protección</h2>
+          <p>Antivirus y Firewall</p>
+        </div>
+        <div class="card-badge" id="badge-protection"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-protection">
+        <div class="empty-state"><span class="empty-emoji">🛡️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Red -->
+    <div class="card" id="card-network">
+      <div class="card-header">
+        <div class="card-icon-wrap c-network">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="6" height="6" rx="1"/>
+            <rect x="16" y="2" width="6" height="6" rx="1"/>
+            <rect x="9" y="16" width="6" height="6" rx="1"/>
+            <path d="M5 8v4c0 1 .5 2 2 2h10c1.5 0 2-1 2-2V8"/>
+            <line x1="12" y1="14" x2="12" y2="16"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Red</h2>
+          <p>Puertos abiertos y archivo hosts</p>
+        </div>
+        <div class="card-badge" id="badge-network"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-network">
+        <div class="empty-state"><span class="empty-emoji">🌐</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Mantenimiento -->
+    <div class="card" id="card-maintenance">
+      <div class="card-header">
+        <div class="card-icon-wrap c-maintenance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14M12 2v2M12 20v2M2 12h2M20 12h2"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Mantenimiento</h2>
+          <p>Disco, reinicio y tareas programadas</p>
+        </div>
+        <div class="card-badge" id="badge-maintenance"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-maintenance">
+        <div class="empty-state"><span class="empty-emoji">🔧</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Actualizaciones -->
+    <div class="card" id="card-updates">
+      <div class="card-header">
+        <div class="card-icon-wrap c-updates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Actualizaciones de Software</h2>
+          <p>Programas instalados con nuevas versiones disponibles</p>
+        </div>
+        <div class="card-badge" id="badge-updates"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-updates" onclick="scanUpdates()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-updates">
+        <div class="empty-state"><span class="empty-emoji">🔄</span><p>Pulsa "Analizar" para buscar actualizaciones</p></div>
+      </div>
+    </div>
+
+    <!-- Controladores -->
+    <div class="card" id="card-drivers">
+      <div class="card-header">
+        <div class="card-icon-wrap c-drivers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Controladores</h2>
+          <p>Drivers y software instalado</p>
+        </div>
+        <div class="card-badge" id="badge-drivers"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-drivers">
+        <div class="empty-state"><span class="empty-emoji">⚙️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Conectividad -->
+    <div class="card" id="card-connectivity">
+      <div class="card-header">
+        <div class="card-icon-wrap c-connectivity">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <circle cx="12" cy="20" r="1" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Conectividad</h2>
+          <p>Estado de internet, latencia y velocidad</p>
+        </div>
+        <div class="card-badge" id="badge-connectivity"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-speedtest" onclick="runSpeedtest()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          Test velocidad
+        </button>
+      </div>
+      <div class="card-body" id="body-connectivity">
+        <div class="empty-state"><span class="empty-emoji">🌐</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Energía y Temperatura -->
+    <div class="card" id="card-energy">
+      <div class="card-header">
+        <div class="card-icon-wrap c-energy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Energía y Temperatura</h2>
+          <p>Plan de energía, batería y sensores térmicos</p>
+        </div>
+        <div class="card-badge" id="badge-energy"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-energy">
+        <div class="empty-state"><span class="empty-emoji">🌡️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Monitor de Rendimiento -->
+    <div class="card" id="card-perf">
+      <div class="card-header">
+        <div class="card-icon-wrap c-perf">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Monitor de Rendimiento</h2>
+          <p>CPU, RAM y disco en tiempo real</p>
+        </div>
+        <div class="perf-toggle-wrap">
+          <button class="btn-scan-module" id="btn-perf-toggle" onclick="togglePerf()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Iniciar monitor
+          </button>
+        </div>
+      </div>
+      <div class="card-body" id="body-perf">
+        <div class="empty-state"><span class="empty-emoji">📊</span><p>Pulsa "Iniciar monitor" para ver el rendimiento en tiempo real</p></div>
+      </div>
+    </div>
+
+    <!-- Privacidad y Limpieza -->
+    <div class="card" id="card-privacy">
+      <div class="card-header">
+        <div class="card-icon-wrap c-privacy">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <line x1="8" y1="11" x2="16" y2="11"/>
+            <line x1="8" y1="15" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Privacidad y Limpieza</h2>
+          <p>Telemetría, permisos de apps y archivos temporales</p>
+        </div>
+        <div class="card-badge" id="badge-privacy"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-privacy">
+        <div class="empty-state"><span class="empty-emoji">🔐</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+
+    <!-- Inventario de Hardware -->
+    <div class="card" id="card-inventory">
+      <div class="card-header">
+        <div class="card-icon-wrap c-inventory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Inventario de Hardware</h2>
+          <p>CPU, GPU, RAM, placa base y BIOS</p>
+        </div>
+        <div class="card-badge" id="badge-inventory"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-inventory">
+        <div class="empty-state"><span class="empty-emoji">🖥️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Servicios de Windows -->
+    <div class="card" id="card-services">
+      <div class="card-header">
+        <div class="card-icon-wrap c-services">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Servicios de Windows</h2>
+          <p>Servicios automáticos en ejecución y detección de sospechosos</p>
+        </div>
+        <div class="card-badge" id="badge-services"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-services">
+        <div class="empty-state"><span class="empty-emoji">⚙️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Actualizaciones Windows -->
+    <div class="card" id="card-wupdates">
+      <div class="card-header">
+        <div class="card-icon-wrap c-wupdates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <path d="M12 8v4l3 3"/>
+            <path d="M8 12H3M12 3v5"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Actualizaciones Windows</h2>
+          <p>Actualizaciones pendientes de Windows Update</p>
+        </div>
+        <div class="card-badge" id="badge-wupdates"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-wupdates" onclick="checkWindowsUpdates()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Comprobar
+        </button>
+      </div>
+      <div class="card-body" id="body-wupdates">
+        <div class="empty-state"><span class="empty-emoji">🪟</span><p>Pulsa "Comprobar" para buscar actualizaciones pendientes. Puede tardar hasta 60 segundos.</p></div>
+      </div>
+    </div>
+
+  </div><!-- /#cards-pool -->
+
+  <script src="/static/js/app.js?v={{ cache_bust }}"></script>
+</body>
+</html>
