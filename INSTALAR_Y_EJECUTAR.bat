@@ -1,6 +1,14 @@
 @echo off
 title PC Guardian - Instalador
 
+:: Solicitar elevacion si no somos administrador
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [*] Solicitando permisos de administrador...
+    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    exit /b
+)
+
 cd /d "%~dp0"
 
 echo.
@@ -43,7 +51,7 @@ if %errorlevel% neq 0 (
 
 :: Lanzar
 echo.
-echo [*] Iniciando PC Guardian en http://127.0.0.1:8765
+echo [*] Iniciando PC Guardian en http://127.0.0.1:47832
 echo [*] El navegador se abrira automaticamente.
 echo [*] Cierra esta ventana para apagar la aplicacion.
 echo.

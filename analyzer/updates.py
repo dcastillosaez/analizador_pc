@@ -170,7 +170,7 @@ def update_package(package_id: str) -> dict:
     """Actualiza un paquete concreto. Esta es la única operación de escritura de la app."""
     # Sanidad básica: el ID de winget solo contiene alfanuméricos, puntos y guiones
     import re
-    if not re.match(r"^[\w.\-]+$", package_id):
+    if not re.match(r"^[\w.\-\+]+$", package_id):
         return {"success": False, "message": "ID de paquete no válido.", "output": ""}
 
     try:
@@ -179,6 +179,8 @@ def update_package(package_id: str) -> dict:
                 "winget", "upgrade",
                 "--id", package_id,
                 "--silent",
+                "--force",
+                "--disable-interactivity",
                 "--accept-package-agreements",
                 "--accept-source-agreements",
             ],

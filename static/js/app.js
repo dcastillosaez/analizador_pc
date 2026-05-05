@@ -1385,7 +1385,9 @@ function renderCerts(data) {
     const expColor = item.status === 'danger' ? 'var(--danger)' : 'var(--warning)';
     const deleteBtn = item.can_delete
       ? `<button class="btn-cert-delete" id="certdel-${idx}"
-           onclick="doDeleteCert('${escHtml(item.store_path)}','${escHtml(item.thumbprint)}',${idx})"
+           data-store-path="${escHtml(item.store_path)}"
+           data-thumbprint="${escHtml(item.thumbprint)}"
+           onclick="doDeleteCert(this.dataset.storePath,this.dataset.thumbprint,${idx})"
            title="Eliminar certificado caducado">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
