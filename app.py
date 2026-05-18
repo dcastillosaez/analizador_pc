@@ -4,6 +4,12 @@ import threading
 import time
 import webbrowser
 
+# Modo silencioso para escaneo al arrancar Windows (sin servidor Flask)
+if "--silent" in sys.argv:
+    from analyzer.notifications import run_silent_scan
+    run_silent_scan()
+    sys.exit(0)
+
 from flask import Flask, jsonify, render_template, request
 
 from analyzer.hardware    import analyze_hardware
@@ -32,6 +38,10 @@ from analyzer.dns           import analyze_dns, set_dns
 from analyzer.firewall_rules import analyze_firewall_rules, delete_firewall_rule
 from analyzer.perf_history  import record as perf_record, get_history as perf_get_history
 from analyzer.benchmark     import run_benchmark, get_history as bench_get_history
+from analyzer.diskmap       import scan_dir as diskmap_scan
+from analyzer.duplicates    import find_duplicates, delete_files as dup_delete
+from analyzer.notifications import (enable_startup, disable_startup,
+                                    startup_status, send_toast)
 
 if getattr(sys, "frozen", False):
     _BASE = sys._MEIPASS
@@ -231,6 +241,41 @@ def benchmark_run():
 @app.route("/api/benchmark/history")
 def benchmark_history():
     return jsonify(bench_get_history())
+
+@app.route("/api/diskmap/scan", methods=["POST"])
+def do_diskmap():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(diskmap_scan(body.get("path", "")))
+
+@app.route("/api/duplicates/scan", methods=["POST"])
+def do_dup_scan():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(find_duplicates(body.get("path", "")))
+
+@app.route("/api/duplicates/delete", methods=["POST"])
+def do_dup_delete():
+    body  = request.get_json(force=True, silent=True) or {}
+    paths = body.get("paths", [])
+    if not isinstance(paths, list):
+        return jsonify({"ok": False, "msg": "Se esperaba una lista de rutas."})
+    return jsonify(dup_delete(paths))
+
+@app.route("/api/notifications/status")
+def notif_status():
+    return jsonify({"enabled": startup_status()})
+
+@app.route("/api/notifications/enable", methods=["POST"])
+def notif_enable():
+    return jsonify(enable_startup())
+
+@app.route("/api/notifications/disable", methods=["POST"])
+def notif_disable():
+    return jsonify(disable_startup())
+
+@app.route("/api/notifications/test", methods=["POST"])
+def notif_test():
+    send_toast("PC Guardian — Prueba", "Las notificaciones están funcionando correctamente.")
+    return jsonify({"ok": True, "msg": "Notificación de prueba enviada."})
 
 
 @app.route("/api/update/<path:package_id>", methods=["POST"])

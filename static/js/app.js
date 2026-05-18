@@ -42,6 +42,9 @@ const MODULE_META = {
   dns:              { label: 'DNS activo',   group: 'Red',        emoji: '🌐', color: '#0984e3' },
   'firewall-rules': { label: 'Firewall',     group: 'Seguridad',  emoji: '🛡️', color: '#d63031' },
   benchmark:        { label: 'Benchmark',    group: 'Rendimiento',emoji: '⚡', color: '#fdcb6e' },
+  diskmap:          { label: 'Mapa de disco',group: 'Herramientas',emoji: '💾', color: '#6c5ce7' },
+  duplicates:       { label: 'Duplicados',   group: 'Herramientas',emoji: '📋', color: '#00cec9' },
+  notifications:    { label: 'Notificaciones',group:'Herramientas',emoji: '🔔', color: '#e17055' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -78,9 +81,12 @@ function navigateTo(id) {
   if (crumb) {
     crumb.textContent = id === 'overview'
       ? 'Resumen'
-      : id === 'history'
-        ? 'Historial'
-        : (MODULE_META[id] ? MODULE_META[id].label : id);
+      : id === 'history'       ? 'Historial'
+      : id === 'perf-history' ? 'Tendencias'
+      : id === 'diskmap'      ? 'Mapa de disco'
+      : id === 'duplicates'   ? 'Archivos duplicados'
+      : id === 'notifications'? 'Notificaciones'
+      : (MODULE_META[id] ? MODULE_META[id].label : id);
   }
 
   // Sidebar footer — última vez escaneado
@@ -100,9 +106,13 @@ function navigateTo(id) {
     _hideContentArea();
     showHistoryView();
   } else if (id === 'perf-history') {
-    _returnCardsToPool();
-    _hideContentArea();
-    showPerfHistoryView();
+    _returnCardsToPool(); _hideContentArea(); showPerfHistoryView();
+  } else if (id === 'diskmap') {
+    _returnCardsToPool(); _hideContentArea(); showDiskmapSection();
+  } else if (id === 'duplicates') {
+    _returnCardsToPool(); _hideContentArea(); showDuplicatesSection();
+  } else if (id === 'notifications') {
+    _returnCardsToPool(); _hideContentArea(); showNotificationsSection();
   } else {
     _hideHistorySection();
     showModuleView(id);
@@ -112,11 +122,11 @@ function navigateTo(id) {
   if (window.innerWidth <= 900) closeSidebar();
 }
 
+const _SPECIAL_SECTIONS = ['history-section','perf-history-section',
+  'diskmap-section','duplicates-section','notifications-section'];
+
 function _hideHistorySection() {
-  const hs = _id('history-section');
-  if (hs) hs.classList.add('hidden');
-  const ph = _id('perf-history-section');
-  if (ph) ph.classList.add('hidden');
+  _SPECIAL_SECTIONS.forEach(id => { const el = _id(id); if (el) el.classList.add('hidden'); });
   const ca = _id('content-area');
   if (ca) ca.style.display = '';
 }
@@ -2619,6 +2629,338 @@ async function runBenchmark() {
   if (btn) {
     btn.disabled = false;
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Ejecutar`;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MAPA DE DISCO
+   ══════════════════════════════════════════════════════════════════════════ */
+let _diskmapStack = [];  // historial de rutas para navegación breadcrumb
+
+function showDiskmapSection() {
+  const sec = _id('diskmap-section');
+  if (sec) sec.classList.remove('hidden');
+  if (!_id('diskmap-path-input').value) {
+    _id('diskmap-path-input').value = '%USERPROFILE%';
+  }
+}
+
+async function scanDiskmap(path) {
+  const btn   = _id('diskmap-scan-btn');
+  const body  = _id('diskmap-body');
+  const input = _id('diskmap-path-input');
+  const scanPath = path || input.value.trim() || '%USERPROFILE%';
+
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Escaneando…`; }
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">💾</span><p>Calculando tamaños de carpetas…</p></div>`;
+
+  try {
+    const res  = await fetch('/api/diskmap/scan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path: scanPath }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    _diskmapStack = [];
+    input.value = data.path;
+    renderDiskmapView(data);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Escanear`; }
+}
+
+async function drillDown(path, name) {
+  _diskmapStack.push({ path: _id('diskmap-path-input').value, name });
+  _id('diskmap-path-input').value = path;
+  await scanDiskmap(path);
+}
+
+function renderDiskmapView(data) {
+  const body = _id('diskmap-body');
+  const bc   = _id('diskmap-breadcrumb');
+
+  // Breadcrumb
+  let bcHtml = `<span class="diskmap-bc-item" onclick="scanDiskmap('${escHtml(data.parent)}')">↑ Subir</span>`;
+  _diskmapStack.forEach((item, i) => {
+    bcHtml += ` / <span class="diskmap-bc-item" onclick="_goBackTo(${i})">${escHtml(item.name)}</span>`;
+  });
+  bcHtml += ` / <strong>${escHtml(data.path.split(/[\\/]/).pop() || data.path)}</strong>`;
+  if (bc) bc.innerHTML = bcHtml;
+
+  if (!data.children || data.children.length === 0) {
+    if (body) body.innerHTML = `<div class="empty-state" style="padding:20px 0"><span class="empty-emoji">📭</span><p>Carpeta vacía o sin acceso.</p></div>`;
+    return;
+  }
+
+  // Treemap SVG
+  const W = 800, H = 480;
+  const items = data.children.filter(c => c.size > 0);
+  const layout = _layoutTreemap(items, 2, 2, W - 4, H - 4);
+
+  const PALETTE = ['#4f8ef7','#a29bfe','#00b894','#fdcb6e','#e17055',
+                   '#00cec9','#fd79a8','#6c5ce7','#55efc4','#ffeaa7',
+                   '#fab1a0','#74b9ff'];
+
+  const rects = layout.map((node, i) => {
+    const color = node.is_dir
+      ? PALETTE[i % PALETTE.length]
+      : 'rgba(150,150,150,0.5)';
+    const label = node.w > 40 && node.h > 20
+      ? `<text x="${(node.x + node.w / 2).toFixed(0)}" y="${(node.y + Math.min(node.h / 2, 14)).toFixed(0)}"
+               text-anchor="middle" dominant-baseline="middle"
+               font-size="${Math.min(12, node.h * 0.3, node.w * 0.08).toFixed(0)}"
+               fill="white" fill-opacity="0.9" pointer-events="none">${escHtml(node.name.slice(0, 20))}</text>`
+      : '';
+    const click = node.is_dir
+      ? `onclick="drillDown(${JSON.stringify(node.path).replace(/</g,'\\u003c')}, ${JSON.stringify(node.name).replace(/</g,'\\u003c')})" style="cursor:pointer"`
+      : '';
+    return `
+      <g ${click}>
+        <rect x="${node.x.toFixed(1)}" y="${node.y.toFixed(1)}"
+              width="${Math.max(1,node.w-1).toFixed(1)}" height="${Math.max(1,node.h-1).toFixed(1)}"
+              fill="${color}" fill-opacity="0.82" stroke="var(--bg)" stroke-width="1" rx="2">
+          <title>${escHtml(node.name)} — ${escHtml(node.size_label)}</title>
+        </rect>
+        ${label}
+      </g>`;
+  }).join('');
+
+  const timedOut = data.timed_out ? `<div class="diskmap-warning">⚠ Escaneo incompleto — tiempo agotado. Prueba una carpeta más pequeña.</div>` : '';
+
+  if (body) body.innerHTML = `
+    ${timedOut}
+    <div class="diskmap-meta">Total: <strong>${escHtml(data.size_label)}</strong> · ${data.children.length} entradas</div>
+    <div class="diskmap-svg-wrap">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" class="diskmap-svg">
+        ${rects}
+      </svg>
+    </div>
+    <div class="diskmap-legend">
+      <span class="diskmap-legend-dir">■ Carpeta (clic para entrar)</span>
+      <span class="diskmap-legend-file">■ Archivo</span>
+    </div>`;
+}
+
+function _layoutTreemap(items, x, y, w, h) {
+  if (!items.length) return [];
+  const sorted = [...items].sort((a, b) => b.size - a.size);
+  const total  = sorted.reduce((s, i) => s + i.size, 0) || 1;
+  const result = [];
+  let rx = x, ry = y, rw = w, rh = h;
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (rw < 2 || rh < 2) break;
+    const rem = sorted.slice(i).reduce((s, x) => s + x.size, 0) || 1;
+    const ratio = sorted[i].size / rem;
+    let nx, ny, nw, nh;
+    if (rw >= rh) {
+      nw = Math.max(2, rw * ratio); nh = rh;
+      nx = rx; ny = ry; rx += nw; rw -= nw;
+    } else {
+      nw = rw; nh = Math.max(2, rh * ratio);
+      nx = rx; ny = ry; ry += nh; rh -= nh;
+    }
+    result.push({ ...sorted[i], x: nx, y: ny, w: nw, h: nh });
+  }
+  return result;
+}
+
+async function _goBackTo(idx) {
+  const target = _diskmapStack[idx];
+  _diskmapStack = _diskmapStack.slice(0, idx);
+  _id('diskmap-path-input').value = target.path;
+  await scanDiskmap(target.path);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ARCHIVOS DUPLICADOS
+   ══════════════════════════════════════════════════════════════════════════ */
+function showDuplicatesSection() {
+  const sec = _id('duplicates-section');
+  if (sec) sec.classList.remove('hidden');
+  if (!_id('dup-path-input').value) {
+    _id('dup-path-input').value = '%USERPROFILE%';
+  }
+}
+
+async function scanDuplicates() {
+  const btn   = _id('dup-scan-btn');
+  const body  = _id('dup-body');
+  const path  = _id('dup-path-input').value.trim() || '%USERPROFILE%';
+
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Buscando…`; }
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">🔍</span><p>Calculando hashes MD5… puede tardar varios segundos.</p></div>`;
+
+  try {
+    const res  = await fetch('/api/duplicates/scan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (body) body.innerHTML = renderDuplicates(data);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Buscar duplicados`; }
+}
+
+function renderDuplicates(data) {
+  if (!data.groups || data.groups.length === 0) {
+    return `<div class="empty-state" style="padding:30px 0">
+      <span class="empty-emoji">✅</span>
+      <p>No se encontraron archivos duplicados en <code>${escHtml(data.path)}</code>.<br>
+      Archivos analizados: ${data.scanned || 0}</p>
+    </div>`;
+  }
+
+  const summary = `
+    <div class="dup-summary">
+      <span>📂 ${data.path ? escHtml(data.path) : ''}</span>
+      <span>🔍 ${data.scanned} archivos analizados</span>
+      <span>📋 ${data.total_groups} grupos de duplicados</span>
+      <span style="color:#ff4757;font-weight:600">💾 ${escHtml(data.wasted_label)} recuperables</span>
+    </div>`;
+
+  const groups = data.groups.map((g, gi) => {
+    const files = g.files.map((f, fi) => {
+      const isKeep = fi === 0;
+      const dt = new Date(f.mtime * 1000).toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
+      return `
+        <div class="dup-file ${isKeep ? 'dup-keep' : 'dup-delete'}">
+          <span class="dup-file-badge">${isKeep ? '✓ Conservar' : '✕ Eliminar'}</span>
+          <span class="dup-file-name" title="${escHtml(f.path)}">${escHtml(f.name)}</span>
+          <span class="dup-file-meta">${escHtml(f.size_label)} · ${dt}</span>
+          <span class="dup-file-path">${escHtml(f.path)}</span>
+        </div>`;
+    }).join('');
+
+    const delPaths = g.files.slice(1).map(f => f.path);
+    const delJson  = JSON.stringify(delPaths).replace(/</g, '\\u003c');
+
+    return `
+      <div class="dup-group" id="dup-group-${gi}">
+        <div class="dup-group-header" onclick="this.closest('.dup-group').classList.toggle('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="dup-chevron">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span class="dup-group-title">${g.count} copias · ${escHtml(g.size_label)} c/u</span>
+          <span class="dup-group-waste" style="color:#ff4757">−${escHtml(g.wasted_label)}</span>
+          <button class="btn-kill" onclick="event.stopPropagation();deleteDuplicates(${delJson},'dup-group-${gi}')">
+            Eliminar duplicados
+          </button>
+        </div>
+        <div class="dup-group-body">${files}</div>
+      </div>`;
+  }).join('');
+
+  return summary + `<div class="dup-groups">${groups}</div>`;
+}
+
+async function deleteDuplicates(paths, groupId) {
+  if (!confirm(`¿Eliminar ${paths.length} archivo(s) duplicado(s)?\nSe conservará el más reciente.`)) return;
+  try {
+    const res  = await fetch('/api/duplicates/delete', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ paths }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) {
+      const el = _id(groupId);
+      if (el) el.style.opacity = '0.4';
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NOTIFICACIONES PROGRAMADAS
+   ══════════════════════════════════════════════════════════════════════════ */
+async function showNotificationsSection() {
+  const sec  = _id('notifications-section');
+  const body = _id('notifications-body');
+  if (sec) sec.classList.remove('hidden');
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:30px 0"><span class="empty-emoji spin-anim" style="display:inline-block">⏳</span></div>`;
+
+  try {
+    const res  = await fetch('/api/notifications/status');
+    const data = await res.json();
+    if (body) body.innerHTML = renderNotifications(data.enabled);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="history-empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderNotifications(enabled) {
+  const stColor = enabled ? '#2ed573' : 'var(--text-muted)';
+  const stLabel = enabled ? 'Activo' : 'Inactivo';
+  const stDesc  = enabled
+    ? 'PC Guardian se ejecutará automáticamente al arrancar Windows y enviará una notificación si detecta problemas críticos.'
+    : 'El escaneo automático al inicio está desactivado. Actívalo para recibir alertas sin tener que abrir la aplicación.';
+
+  return `
+    <div class="notif-card">
+      <div class="notif-header">
+        <div class="notif-icon">🔔</div>
+        <div class="notif-info">
+          <div class="notif-title">Escaneo al arrancar Windows</div>
+          <div class="notif-status" style="color:${stColor}">${stLabel}</div>
+        </div>
+        <button class="notif-toggle ${enabled ? 'notif-on' : 'notif-off'}" id="notif-toggle-btn"
+                onclick="toggleNotifications(${enabled})">
+          ${enabled ? 'Desactivar' : 'Activar'}
+        </button>
+      </div>
+      <p class="notif-desc">${stDesc}</p>
+      <div class="notif-details">
+        <div class="notif-detail-item">
+          <span class="notif-detail-icon">⚡</span>
+          <span>Escaneo ligero: seguridad, protección, actualizaciones, mantenimiento y privacidad</span>
+        </div>
+        <div class="notif-detail-item">
+          <span class="notif-detail-icon">💬</span>
+          <span>Notificación toast de Windows solo si hay problemas críticos o advertencias</span>
+        </div>
+        <div class="notif-detail-item">
+          <span class="notif-detail-icon">🔑</span>
+          <span>Se registra en <code>HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run</code></span>
+        </div>
+      </div>
+      <button class="btn-quickfix" style="margin-top:16px" onclick="testNotification()">
+        🔔 Enviar notificación de prueba
+      </button>
+    </div>`;
+}
+
+async function toggleNotifications(currentEnabled) {
+  const btn = _id('notif-toggle-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const endpoint = currentEnabled ? '/api/notifications/disable' : '/api/notifications/enable';
+  try {
+    const res  = await fetch(endpoint, { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) showNotificationsSection();
+    else if (btn) { btn.disabled = false; btn.textContent = currentEnabled ? 'Desactivar' : 'Activar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+async function testNotification() {
+  try {
+    const res  = await fetch('/api/notifications/test', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) alert(data.msg);
+  } catch (e) {
+    alert('Error: ' + e.message);
   }
 }
 

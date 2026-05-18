@@ -2248,3 +2248,124 @@ body {
   margin-top: 4px;
 }
 .bench-current-row td { background: rgba(253,203,110,0.06); font-weight: 600; }
+
+/* ─── Mapa de disco ──────────────────────────────────────────────────────── */
+.diskmap-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+}
+.diskmap-breadcrumb {
+  font-size: 0.78rem; color: var(--text-soft);
+  margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+}
+.diskmap-bc-item {
+  cursor: pointer; color: var(--primary);
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.diskmap-bc-item:hover { color: var(--text); }
+.diskmap-meta  { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; }
+.diskmap-warning {
+  padding: 8px 12px; border-radius: 6px; margin-bottom: 8px;
+  background: rgba(255,165,2,0.1); border: 1px solid rgba(255,165,2,0.25);
+  color: #ffa502; font-size: 0.8rem;
+}
+.diskmap-svg-wrap {
+  width: 100%; border-radius: var(--radius-s);
+  border: 1px solid var(--card-border); overflow: hidden;
+}
+[data-theme="light"] .diskmap-svg-wrap { border-color: rgba(0,0,0,0.1); }
+.diskmap-svg { display: block; background: rgba(0,0,0,0.2); }
+[data-theme="light"] .diskmap-svg { background: rgba(0,0,0,0.04); }
+.diskmap-legend {
+  display: flex; gap: 16px; font-size: 0.72rem;
+  color: var(--text-muted); margin-top: 8px;
+}
+.diskmap-legend-dir  { color: #4f8ef7; }
+.diskmap-legend-file { color: #636e72; }
+
+/* ─── Archivos duplicados ────────────────────────────────────────────────── */
+.dup-summary {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  padding: 12px 0 16px; font-size: 0.8rem; color: var(--text-soft);
+}
+.dup-groups { display: flex; flex-direction: column; gap: 8px; }
+
+.dup-group {
+  border: 1px solid var(--card-border); border-radius: var(--radius-s);
+  overflow: hidden;
+}
+[data-theme="light"] .dup-group { border-color: rgba(0,0,0,0.1); }
+.dup-group-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; cursor: pointer;
+  background: rgba(255,255,255,0.03);
+  transition: background 0.15s;
+}
+[data-theme="light"] .dup-group-header { background: rgba(0,0,0,0.02); }
+.dup-group-header:hover { background: var(--card-hover); }
+.dup-chevron { transition: transform 0.2s; flex-shrink: 0; color: var(--text-muted); }
+.dup-group.open .dup-chevron { transform: rotate(180deg); }
+.dup-group-title { flex: 1; font-size: 0.82rem; font-weight: 500; color: var(--text); }
+.dup-group-waste { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+
+.dup-group-body { display: none; padding: 8px 14px 12px; }
+.dup-group.open .dup-group-body { display: block; }
+
+.dup-file {
+  display: grid; grid-template-columns: 90px 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 2px 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--card-border);
+  font-size: 0.79rem;
+}
+[data-theme="light"] .dup-file { border-bottom-color: rgba(0,0,0,0.05); }
+.dup-file:last-child { border-bottom: none; }
+.dup-file-badge {
+  grid-row: 1/3; align-self: center;
+  font-size: 0.7rem; font-weight: 700; white-space: nowrap;
+}
+.dup-keep  .dup-file-badge { color: #2ed573; }
+.dup-delete .dup-file-badge { color: #ff4757; }
+.dup-file-name  { font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-file-meta  { white-space: nowrap; color: var(--text-muted); font-size: 0.72rem; text-align: right; }
+.dup-file-path  { grid-column: 2/4; font-size: 0.68rem; color: var(--text-muted); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── Notificaciones ─────────────────────────────────────────────────────── */
+.notif-card {
+  max-width: 620px;
+  background: var(--card); border: 1px solid var(--card-border);
+  border-radius: var(--radius); padding: 24px;
+  backdrop-filter: var(--glass-blur);
+}
+[data-theme="light"] .notif-card { border-color: rgba(0,0,0,0.09); }
+.notif-header {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 14px;
+}
+.notif-icon { font-size: 2rem; }
+.notif-info { flex: 1; }
+.notif-title  { font-size: 1rem; font-weight: 600; color: var(--text); }
+.notif-status { font-size: 0.82rem; font-weight: 600; margin-top: 2px; }
+
+.notif-toggle {
+  padding: 7px 18px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: background 0.18s, border-color 0.18s;
+  border: 1px solid; flex-shrink: 0;
+}
+.notif-on  { background: rgba(255,71,87,0.12); color: #ff4757; border-color: rgba(255,71,87,0.35); }
+.notif-on:hover  { background: rgba(255,71,87,0.22); }
+.notif-off { background: rgba(46,213,115,0.12); color: #2ed573; border-color: rgba(46,213,115,0.35); }
+.notif-off:hover { background: rgba(46,213,115,0.22); }
+.notif-toggle:disabled { opacity: .5; cursor: not-allowed; }
+
+.notif-desc { font-size: 0.82rem; color: var(--text-soft); margin-bottom: 16px; line-height: 1.6; }
+.notif-details { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.notif-detail-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  font-size: 0.79rem; color: var(--text-soft);
+}
+.notif-detail-icon { flex-shrink: 0; }
+.notif-detail-item code {
+  background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 3px;
+  font-family: monospace; font-size: 0.72rem;
+}
+[data-theme="light"] .notif-detail-item code { background: rgba(0,0,0,0.06); }

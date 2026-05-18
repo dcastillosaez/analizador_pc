@@ -23,8 +23,8 @@
 
 ## Almacenamiento
 
-- [ ] **Mapa de disco** — visualización treemap de carpetas por tamaño (estilo WinDirStat en el navegador, canvas o SVG)
-- [ ] **Archivos duplicados** — búsqueda por hash MD5 en carpetas seleccionadas, con grupos de duplicados y opción de eliminar dejando uno
+- [x] **Mapa de disco** — visualización treemap de carpetas por tamaño (estilo WinDirStat en el navegador, canvas o SVG)
+- [x] **Archivos duplicados** — búsqueda por hash MD5 en carpetas seleccionadas, con grupos de duplicados y opción de eliminar dejando uno
 - [x] **Programas instalados** — inventario completo con versión, tamaño en disco y fecha de instalación; opción de desinstalar via winget o `msiexec`
 
 ---
@@ -82,5 +82,5 @@
 - [x] **Puntuación global del PC** — widget en el overview con score 0-100 y breakdown por categoría
 - [x] **Exportar informe** — genera HTML autocontenido con el resultado completo del último escaneo; descarga directa desde el navegador
 - [x] **Historial de escaneos** — guardar cada análisis en SQLite y mostrar línea de tiempo; ver si la salud mejora o empeora
-- [ ] **Notificaciones programadas** — escaneo silencioso al arrancar Windows con notificación toast si hay problemas críticos (tray icon via `pystray`)
+- [x] **Notificaciones programadas** — escaneo silencioso al arrancar Windows con notificación toast si hay problemas críticos (tray icon via `pystray`)
 - [x] **Modo claro / oscuro** — toggle de tema persistente en localStorage
