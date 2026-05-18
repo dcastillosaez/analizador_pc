@@ -2185,3 +2185,66 @@ body {
   margin-top: 5px;
 }
 .perf-hist-empty { font-size: 0.78rem; color: var(--text-muted); padding: 20px 0; text-align: center; }
+
+/* ─── Benchmark rápido ───────────────────────────────────────────────────── */
+.c-benchmark { background: linear-gradient(135deg, rgba(253,203,110,0.22), rgba(225,112,85,0.12)); }
+
+.bench-running {
+  padding: 20px 0;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.bench-phase {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.88rem; color: var(--text-soft);
+}
+.bench-steps { display: flex; flex-direction: column; gap: 6px; padding-left: 4px; }
+.bench-step  { font-size: 0.78rem; color: var(--text-muted); }
+
+.bench-results { display: flex; flex-direction: column; gap: 20px; padding-top: 6px; }
+
+.bench-score-block {
+  display: flex; align-items: center; gap: 20px;
+}
+.bench-score-ring {
+  width: 76px; height: 76px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 3px solid var(--bench-color, #2ed573);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.bench-score-num { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+.bench-score-sub { font-size: 0.65rem; color: var(--text-muted); }
+.bench-score-label { font-size: 1rem; font-weight: 600; }
+.bench-delta { font-size: 0.78rem; font-weight: 500; }
+.bench-primes { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+.bench-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.bench-metric {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-s);
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+[data-theme="light"] .bench-metric { border-color: rgba(0,0,0,0.09); }
+.bench-metric-name { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.bench-metric-val  { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+.bench-metric-hint { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+
+.bench-bar-track {
+  height: 5px; border-radius: 3px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden; margin-top: 4px;
+}
+[data-theme="light"] .bench-bar-track { background: rgba(0,0,0,0.07); }
+.bench-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+
+.bench-hist-title {
+  font-size: 0.78rem; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .05em;
+  margin-top: 4px;
+}
+.bench-current-row td { background: rgba(253,203,110,0.06); font-weight: 600; }

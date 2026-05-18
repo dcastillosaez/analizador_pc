@@ -268,6 +268,15 @@
           <span class="nav-item-label">Programas</span>
         </div>
 
+        <div class="nav-item" id="nav-item-benchmark" onclick="navigateTo('benchmark')" tabindex="0" title="Benchmark rápido" role="button" aria-label="Benchmark rápido">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Benchmark</span>
+        </div>
+
         <div class="nav-item" id="nav-item-perf-history" onclick="navigateTo('perf-history')" tabindex="0" title="Tendencias de rendimiento" role="button" aria-label="Tendencias de rendimiento">
           <div class="nav-item-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -962,6 +971,31 @@
       </div>
       <div class="card-body" id="body-firewall-rules">
         <div class="empty-state"><span class="empty-emoji">🛡️</span><p>Pulsa "Analizar" para listar las reglas de firewall.</p></div>
+      </div>
+    </div>
+
+    <!-- Benchmark rápido -->
+    <div class="card" id="card-benchmark">
+      <div class="card-header">
+        <div class="card-icon-wrap c-benchmark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Benchmark rápido</h2>
+          <p>CPU (criba de primos) + disco (lectura/escritura 32 MB)</p>
+        </div>
+        <div class="card-badge" id="badge-benchmark"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-benchmark" onclick="runBenchmark()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          Ejecutar
+        </button>
+      </div>
+      <div class="card-body" id="body-benchmark">
+        <div class="empty-state"><span class="empty-emoji">⚡</span><p>Pulsa "Ejecutar" para lanzar el benchmark (~5-10 s).</p></div>
       </div>
     </div>
 

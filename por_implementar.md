@@ -7,7 +7,7 @@
 - [x] **Monitor en tiempo real** — gráficas de CPU/RAM/disco/GPU que se refrescan cada 2 segundos
 - [x] **Historial de rendimiento** — guardar snapshots en SQLite y ver tendencias en el tiempo
 - [x] **Procesos pesados** — lista en tiempo real de los 10 procesos que más CPU/RAM consumen, con PID, ruta y opción de terminarlos
-- [ ] **Benchmark rápido** — test de rendimiento de CPU (cálculo de primos) y disco (lectura/escritura secuencial) con puntuación comparable entre sesiones
+- [x] **Benchmark rápido** — test de rendimiento de CPU (cálculo de primos) y disco (lectura/escritura secuencial) con puntuación comparable entre sesiones
 
 ---
 

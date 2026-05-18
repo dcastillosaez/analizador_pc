@@ -31,6 +31,7 @@ from analyzer.quickfix      import set_energy_plan_high, disable_startup_item, d
 from analyzer.dns           import analyze_dns, set_dns
 from analyzer.firewall_rules import analyze_firewall_rules, delete_firewall_rule
 from analyzer.perf_history  import record as perf_record, get_history as perf_get_history
+from analyzer.benchmark     import run_benchmark, get_history as bench_get_history
 
 if getattr(sys, "frozen", False):
     _BASE = sys._MEIPASS
@@ -222,6 +223,14 @@ def do_delete_fw_rule():
 @app.route("/api/perf/history")
 def perf_history_get():
     return jsonify(perf_get_history())
+
+@app.route("/api/benchmark/run", methods=["POST"])
+def benchmark_run():
+    return jsonify(run_benchmark())
+
+@app.route("/api/benchmark/history")
+def benchmark_history():
+    return jsonify(bench_get_history())
 
 
 @app.route("/api/update/<path:package_id>", methods=["POST"])

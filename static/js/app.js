@@ -41,6 +41,7 @@ const MODULE_META = {
   software:         { label: 'Programas',    group: 'Sistema',    emoji: '📦', color: '#00b894' },
   dns:              { label: 'DNS activo',   group: 'Red',        emoji: '🌐', color: '#0984e3' },
   'firewall-rules': { label: 'Firewall',     group: 'Seguridad',  emoji: '🛡️', color: '#d63031' },
+  benchmark:        { label: 'Benchmark',    group: 'Rendimiento',emoji: '⚡', color: '#fdcb6e' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -228,6 +229,7 @@ async function _triggerModuleScan(id) {
   if (id === 'processes')  { if (typeof scanProcesses  === 'function') scanProcesses();  return; }
   if (id === 'software')       { if (typeof scanSoftware      === 'function') scanSoftware();      return; }
   if (id === 'firewall-rules') { if (typeof scanFirewallRules === 'function') scanFirewallRules(); return; }
+  if (id === 'benchmark')      { if (typeof runBenchmark     === 'function') runBenchmark();      return; }
 
   if (btn) {
     btn.disabled = true;
@@ -254,7 +256,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -504,6 +506,10 @@ function renderCard(id, data) {
     body.innerHTML = renderFirewallRules(data);
     const btnFw = document.getElementById('btn-firewall-rules');
     if (btnFw) btnFw.style.display = '';
+  } else if (id === 'benchmark') {
+    body.innerHTML = renderBenchmark(data);
+    const btnBench = document.getElementById('btn-benchmark');
+    if (btnBench) btnBench.style.display = '';
   } else if (id === 'startup') {
     body.innerHTML = renderStartup(data);
   } else {
@@ -2577,4 +2583,124 @@ async function doDisableStartup(hive, key, name, btn) {
     alert('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = '✕ Deshabilitar'; }
   }
+}
+
+/* ── Benchmark rápido ────────────────────────────────────────────────────── */
+async function runBenchmark() {
+  const btn  = document.getElementById('btn-benchmark');
+  const body = document.getElementById('body-benchmark');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Ejecutando…`;
+  }
+  if (body) body.innerHTML = `
+    <div class="bench-running">
+      <div class="bench-phase">
+        <span class="spin-anim" style="display:inline-block;font-size:1.4rem">⚡</span>
+        <span>Ejecutando benchmark… esto puede tardar hasta 10 segundos.</span>
+      </div>
+      <div class="bench-steps">
+        <div class="bench-step">🔢 CPU: criba de Eratóstenes hasta 10 000 000</div>
+        <div class="bench-step">💾 Disco: escritura + lectura de 32 MB</div>
+      </div>
+    </div>`;
+
+  try {
+    const res  = await fetch('/api/benchmark/run', { method: 'POST' });
+    const data = await res.json();
+    body.innerHTML = renderBenchmark(data);
+    const btnB = document.getElementById('btn-benchmark');
+    if (btnB) btnB.style.display = '';
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Ejecutar`;
+  }
+}
+
+function renderBenchmark(data) {
+  const scoreColor = data.score >= 70 ? '#2ed573' : data.score >= 40 ? '#ffa502' : '#ff4757';
+  const scoreLabel = data.score >= 70 ? 'Bueno' : data.score >= 40 ? 'Aceptable' : 'Lento';
+
+  let deltaHtml = '';
+  if (data.delta_score !== null && data.delta_score !== undefined) {
+    const sign  = data.delta_score >= 0 ? '+' : '';
+    const color = data.delta_score > 0 ? '#2ed573' : data.delta_score < 0 ? '#ff4757' : 'var(--text-muted)';
+    deltaHtml = `<span class="bench-delta" style="color:${color}">${sign}${data.delta_score} vs anterior</span>`;
+  }
+
+  // Barras de referencia (máx visual = 3000 ms CPU / 1000 MB/s disco)
+  const cpuPct   = Math.min(100, Math.round((3000 - data.cpu_ms)  / 30));
+  const writePct = Math.min(100, Math.round(data.disk_write / 10));
+  const readPct  = Math.min(100, Math.round(data.disk_read  / 10));
+
+  const metricBar = (pct, color) =>
+    `<div class="bench-bar-track"><div class="bench-bar-fill" style="width:${Math.max(2,pct)}%;background:${color}"></div></div>`;
+
+  // Tabla histórico
+  let histHtml = '';
+  if (data.history && data.history.length > 1) {
+    const rows = data.history.map((r, i) => {
+      const ts  = (r.ts || '').replace('T', ' ');
+      const sc  = r.score ?? '—';
+      const scColor = r.score >= 70 ? '#2ed573' : r.score >= 40 ? '#ffa502' : '#ff4757';
+      const isCurrent = i === 0;
+      return `
+        <tr class="hist-row${isCurrent ? ' bench-current-row' : ''}">
+          <td class="hist-ts">${escHtml(ts)}</td>
+          <td style="text-align:center;font-weight:600;color:${scColor}">${sc}</td>
+          <td class="soft-version">${r.cpu_ms != null ? r.cpu_ms + ' ms' : '—'}</td>
+          <td class="soft-version">${r.disk_write != null ? r.disk_write + ' MB/s' : '—'}</td>
+          <td class="soft-version">${r.disk_read  != null ? r.disk_read  + ' MB/s' : '—'}</td>
+        </tr>`;
+    }).join('');
+
+    histHtml = `
+      <div class="bench-hist-title">Historial de ejecuciones</div>
+      <div class="hist-table-wrap" style="margin-top:8px">
+        <table class="hist-table">
+          <thead><tr><th>Fecha</th><th>Score</th><th>CPU</th><th>Escritura</th><th>Lectura</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  return `
+    <div class="bench-results">
+      <div class="bench-score-block">
+        <div class="bench-score-ring" style="--bench-color:${scoreColor}">
+          <span class="bench-score-num" style="color:${scoreColor}">${data.score}</span>
+          <span class="bench-score-sub">/ 100</span>
+        </div>
+        <div class="bench-score-info">
+          <div class="bench-score-label" style="color:${scoreColor}">${scoreLabel}</div>
+          ${deltaHtml}
+          <div class="bench-primes">🔢 ${(data.primes || 0).toLocaleString()} primos encontrados</div>
+        </div>
+      </div>
+
+      <div class="bench-metrics">
+        <div class="bench-metric">
+          <span class="bench-metric-name">CPU (criba 10M)</span>
+          <span class="bench-metric-val">${data.cpu_ms} ms</span>
+          ${metricBar(cpuPct, '#4f8ef7')}
+          <span class="bench-metric-hint">Menos es mejor</span>
+        </div>
+        <div class="bench-metric">
+          <span class="bench-metric-name">Disco escritura</span>
+          <span class="bench-metric-val">${data.disk_write} MB/s</span>
+          ${metricBar(writePct, '#fdcb6e')}
+        </div>
+        <div class="bench-metric">
+          <span class="bench-metric-name">Disco lectura</span>
+          <span class="bench-metric-val">${data.disk_read} MB/s</span>
+          ${metricBar(readPct, '#00b894')}
+        </div>
+      </div>
+    </div>
+    ${histHtml}`;
 }
