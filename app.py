@@ -23,6 +23,14 @@ from analyzer.wupdates      import check_windows_updates, apply_windows_update
 from analyzer.wifi          import analyze_wifi
 from analyzer.certs         import analyze_certs, delete_cert
 from analyzer.services      import analyze_services
+from analyzer.connections   import analyze_connections
+from analyzer.processes     import get_top_processes, kill_process
+from analyzer.history       import save_scan as hist_save, list_scans as hist_list, delete_scan as hist_delete
+from analyzer.software      import get_installed_software, uninstall_software
+from analyzer.quickfix      import set_energy_plan_high, disable_startup_item, disable_telemetry
+from analyzer.dns           import analyze_dns, set_dns
+from analyzer.firewall_rules import analyze_firewall_rules, delete_firewall_rule
+from analyzer.perf_history  import record as perf_record, get_history as perf_get_history
 
 if getattr(sys, "frozen", False):
     _BASE = sys._MEIPASS
@@ -139,6 +147,82 @@ def do_windows_update(update_id):
 def scan_services():
     return jsonify(analyze_services())
 
+@app.route("/api/scan/connections")
+def scan_connections():
+    return jsonify(analyze_connections())
+
+@app.route("/api/scan/processes")
+def scan_processes():
+    return jsonify(get_top_processes())
+
+@app.route("/api/processes/<int:pid>/kill", methods=["POST"])
+def do_kill_process(pid):
+    return jsonify(kill_process(pid))
+
+@app.route("/api/history/save", methods=["POST"])
+def history_save():
+    body  = request.get_json(force=True, silent=True) or {}
+    score = int(body.get("score", 0))
+    sid   = hist_save(score, body.get("results", {}))
+    return jsonify({"ok": True, "id": sid})
+
+@app.route("/api/history")
+def history_get():
+    return jsonify(hist_list())
+
+@app.route("/api/history/<int:scan_id>", methods=["DELETE"])
+def history_del(scan_id):
+    hist_delete(scan_id)
+    return jsonify({"ok": True})
+
+@app.route("/api/scan/software")
+def scan_software():
+    return jsonify(get_installed_software())
+
+@app.route("/api/software/uninstall", methods=["POST"])
+def do_uninstall():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(uninstall_software(body.get("name", "")))
+
+@app.route("/api/quickfix/energy-high", methods=["POST"])
+def qf_energy():
+    return jsonify(set_energy_plan_high())
+
+@app.route("/api/quickfix/disable-startup", methods=["POST"])
+def qf_disable_startup():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(disable_startup_item(
+        body.get("hive", ""),
+        body.get("key", ""),
+        body.get("name", ""),
+    ))
+
+@app.route("/api/quickfix/telemetry-off", methods=["POST"])
+def qf_telemetry():
+    return jsonify(disable_telemetry())
+
+@app.route("/api/scan/dns")
+def scan_dns():
+    return jsonify(analyze_dns())
+
+@app.route("/api/dns/set", methods=["POST"])
+def dns_set():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(set_dns(body.get("interface", ""), body.get("dns1", ""), body.get("dns2", "")))
+
+@app.route("/api/scan/firewall-rules")
+def scan_firewall_rules():
+    return jsonify(analyze_firewall_rules())
+
+@app.route("/api/firewall-rules/delete", methods=["POST"])
+def do_delete_fw_rule():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(delete_firewall_rule(body.get("name", "")))
+
+@app.route("/api/perf/history")
+def perf_history_get():
+    return jsonify(perf_get_history())
+
 
 @app.route("/api/update/<path:package_id>", methods=["POST"])
 def do_update(package_id):
@@ -150,7 +234,26 @@ def _open_browser():
     webbrowser.open("http://127.0.0.1:8765")
 
 
+def _perf_recorder():
+    while True:
+        time.sleep(300)  # cada 5 minutos
+        try:
+            snap = perf_snapshot()
+            gpu_pct = None
+            if snap.get("gpu"):
+                gpu_pct = snap["gpu"].get("percent")
+            perf_record(
+                snap["cpu"]["percent"],
+                snap["ram"]["percent"],
+                snap["disk"]["percent"],
+                gpu_pct,
+            )
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     if sys.platform == "win32":
-        threading.Thread(target=_open_browser, daemon=True).start()
+        threading.Thread(target=_open_browser,  daemon=True).start()
+        threading.Thread(target=_perf_recorder, daemon=True).start()
     app.run(debug=False, port=8765, use_reloader=False)

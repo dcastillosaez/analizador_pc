@@ -7,6 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css?v={{ cache_bust }}" />
+  <script>
+    (function(){var t=localStorage.getItem('pc-guardian-theme');if(t==='light')document.documentElement.setAttribute('data-theme','light');})();
+  </script>
 </head>
 <body>
 
@@ -148,6 +151,15 @@
           <span class="nav-dot dot-pending" id="nav-dot-protection"></span>
         </div>
 
+        <div class="nav-item" id="nav-item-firewall-rules" onclick="navigateTo('firewall-rules')" tabindex="0" title="Reglas de firewall" role="button" aria-label="Reglas de firewall">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Firewall</span>
+        </div>
+
         <!-- Grupo: Red -->
         <div class="nav-group-label">Red</div>
 
@@ -202,6 +214,17 @@
           <span class="nav-dot dot-pending" id="nav-dot-wifi"></span>
         </div>
 
+        <div class="nav-item" id="nav-item-dns" onclick="navigateTo('dns')" tabindex="0" title="DNS activo" role="button" aria-label="DNS activo">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">DNS activo</span>
+          <span class="nav-dot dot-pending" id="nav-dot-dns"></span>
+        </div>
+
         <!-- Grupo: Rendimiento -->
         <div class="nav-group-label">Rendimiento</div>
 
@@ -223,6 +246,36 @@
           </div>
           <span class="nav-item-label">Energía y Temp.</span>
           <span class="nav-dot dot-pending" id="nav-dot-energy"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-processes" onclick="navigateTo('processes')" tabindex="0" title="Procesos activos" role="button" aria-label="Procesos activos">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>
+              <path d="M7 8h.01"/><path d="M12 8h.01"/><path d="M17 8h.01"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Procesos</span>
+          <span class="nav-dot dot-pending" id="nav-dot-processes"></span>
+        </div>
+
+        <div class="nav-item" id="nav-item-software" onclick="navigateTo('software')" tabindex="0" title="Programas instalados" role="button" aria-label="Programas instalados">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Programas</span>
+        </div>
+
+        <div class="nav-item" id="nav-item-perf-history" onclick="navigateTo('perf-history')" tabindex="0" title="Tendencias de rendimiento" role="button" aria-label="Tendencias de rendimiento">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              <path d="M2 20h20"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Tendencias</span>
         </div>
 
         <!-- Grupo: Mantenimiento -->
@@ -278,6 +331,18 @@
           <span class="nav-dot dot-pending" id="nav-dot-privacy"></span>
         </div>
 
+        <!-- Historial -->
+        <div class="nav-group-label">Historial</div>
+        <div class="nav-item" id="nav-item-history" onclick="navigateTo('history')" tabindex="0" title="Historial de escaneos" role="button" aria-label="Historial de escaneos">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+              <path d="M12 7v5l4 2"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Historial</span>
+        </div>
+
       </nav>
 
       <div class="sidebar-footer">
@@ -327,6 +392,18 @@
               <span class="overall-label"></span>
             </div>
           </div>
+          <button id="btn-theme" class="btn-theme" onclick="toggleTheme()" title="Cambiar tema">
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+          </button>
           <button id="export-btn" class="btn-export" onclick="exportReport()" title="Exportar informe HTML">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -413,6 +490,14 @@
               <div class="pstep" id="pstep-services">
                 <div class="pstep-dot"></div><span>Servicios</span>
                 <span class="pstep-time" id="ptime-services"></span>
+              </div>
+              <div class="pstep" id="pstep-processes">
+                <div class="pstep-dot"></div><span>Procesos</span>
+                <span class="pstep-time" id="ptime-processes"></span>
+              </div>
+              <div class="pstep" id="pstep-dns">
+                <div class="pstep-dot"></div><span>DNS</span>
+                <span class="pstep-time" id="ptime-dns"></span>
               </div>
             </div>
 
@@ -835,6 +920,128 @@
       </div>
     </div>
 
+    <!-- DNS activo -->
+    <div class="card" id="card-dns">
+      <div class="card-header">
+        <div class="card-icon-wrap c-dns">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>DNS activo</h2>
+          <p>Servidores DNS por interfaz, DoH y opción de cambiar</p>
+        </div>
+        <div class="card-badge" id="badge-dns"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-dns">
+        <div class="empty-state"><span class="empty-emoji">🌐</span><p>Pulsa "Analizar" para ver la configuración DNS activa.</p></div>
+      </div>
+    </div>
+
+    <!-- Reglas de firewall -->
+    <div class="card" id="card-firewall-rules">
+      <div class="card-header">
+        <div class="card-icon-wrap c-firewall">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Reglas de firewall</h2>
+          <p>Reglas no estándar habilitadas — permite eliminarlas</p>
+        </div>
+        <div class="card-badge" id="badge-firewall-rules"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-firewall-rules" onclick="scanFirewallRules()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-firewall-rules">
+        <div class="empty-state"><span class="empty-emoji">🛡️</span><p>Pulsa "Analizar" para listar las reglas de firewall.</p></div>
+      </div>
+    </div>
+
+    <!-- Programas instalados -->
+    <div class="card" id="card-software">
+      <div class="card-header">
+        <div class="card-icon-wrap c-software">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Programas instalados</h2>
+          <p>Inventario completo con tamaño y fecha — desinstalar vía winget</p>
+        </div>
+        <div class="card-badge" id="badge-software"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-software" onclick="scanSoftware()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-software">
+        <div class="empty-state"><span class="empty-emoji">📦</span><p>Pulsa "Analizar" para cargar el inventario de programas.</p></div>
+      </div>
+    </div>
+
+    <!-- Procesos activos -->
+    <div class="card" id="card-processes">
+      <div class="card-header">
+        <div class="card-icon-wrap c-processes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>
+            <path d="M7 8h.01"/><path d="M12 8h.01"/><path d="M17 8h.01"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Procesos activos</h2>
+          <p>Top 15 por CPU + RAM — terminar proceso</p>
+        </div>
+        <div class="card-badge" id="badge-processes"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-processes" onclick="scanProcesses()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-processes">
+        <div class="empty-state"><span class="empty-emoji">⚡</span><p>Pulsa "Analizar" para ver los procesos activos.</p></div>
+      </div>
+    </div>
+
+    <!-- Conexiones TCP salientes -->
+    <div class="card" id="card-connections">
+      <div class="card-header">
+        <div class="card-icon-wrap c-connections">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Conexiones TCP salientes</h2>
+          <p>Procesos con TCP establecido hacia el exterior</p>
+        </div>
+        <div class="card-badge" id="badge-connections"><span class="dot-pending"></span></div>
+        <button class="btn-scan-module" id="btn-connections" onclick="scanConnections()" style="display:none">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          Analizar
+        </button>
+      </div>
+      <div class="card-body" id="body-connections">
+        <div class="empty-state"><span class="empty-emoji">🔌</span><p>Pulsa "Analizar" para ver las conexiones TCP activas.</p></div>
+      </div>
+    </div>
+
     <!-- Actualizaciones Windows -->
     <div class="card" id="card-wupdates">
       <div class="card-header">
@@ -865,6 +1072,42 @@
     </div>
 
   </div><!-- /#cards-pool -->
+
+  <!-- ── HISTORIAL ──────────────────────────────────────────────────────── -->
+  <div id="history-section" class="history-section hidden">
+    <div class="history-header">
+      <button class="module-back-btn" onclick="navigateTo('overview')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Resumen
+      </button>
+      <h2 class="history-title">Historial de escaneos</h2>
+    </div>
+    <div id="history-body">
+      <div class="empty-state" style="padding:40px 0">
+        <span class="empty-emoji">⏳</span><p>Cargando historial…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TENDENCIAS DE RENDIMIENTO ─────────────────────────────────────── -->
+  <div id="perf-history-section" class="history-section hidden">
+    <div class="history-header">
+      <button class="module-back-btn" onclick="navigateTo('overview')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Resumen
+      </button>
+      <h2 class="history-title">Tendencias de rendimiento</h2>
+    </div>
+    <div id="perf-history-body">
+      <div class="empty-state" style="padding:40px 0">
+        <span class="empty-emoji">⏳</span><p>Cargando tendencias…</p>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/js/app.js?v={{ cache_bust }}"></script>
 </body>

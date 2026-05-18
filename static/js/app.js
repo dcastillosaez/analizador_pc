@@ -1,5 +1,17 @@
 'use strict';
 
+/* ── Tema claro / oscuro ─────────────────────────────────────────────────── */
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('pc-guardian-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    localStorage.setItem('pc-guardian-theme', 'light');
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    NAVEGACIÓN — Sidebar + Overview + Module View
    (Se añade al inicio; no modifica las funciones existentes)
@@ -24,6 +36,11 @@ const MODULE_META = {
   wupdates:     { label: 'Updates Windows',  group: 'Mantenimiento', emoji: '🪟', color: '#0078d4' },
   wifi:         { label: 'Analizador WiFi', group: 'Red',           emoji: '📶', color: '#00cec9' },
   certs:        { label: 'Certificados',   group: 'Red',           emoji: '🏅', color: '#fdcb6e' },
+  connections:  { label: 'Conexiones TCP', group: 'Red',           emoji: '🔌', color: '#e17055' },
+  processes:    { label: 'Procesos',       group: 'Rendimiento',   emoji: '⚡', color: '#6c5ce7' },
+  software:         { label: 'Programas',    group: 'Sistema',    emoji: '📦', color: '#00b894' },
+  dns:              { label: 'DNS activo',   group: 'Red',        emoji: '🌐', color: '#0984e3' },
+  'firewall-rules': { label: 'Firewall',     group: 'Seguridad',  emoji: '🛡️', color: '#d63031' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -60,7 +77,9 @@ function navigateTo(id) {
   if (crumb) {
     crumb.textContent = id === 'overview'
       ? 'Resumen'
-      : (MODULE_META[id] ? MODULE_META[id].label : id);
+      : id === 'history'
+        ? 'Historial'
+        : (MODULE_META[id] ? MODULE_META[id].label : id);
   }
 
   // Sidebar footer — última vez escaneado
@@ -73,13 +92,36 @@ function navigateTo(id) {
 
   // Render vista
   if (id === 'overview') {
+    _hideHistorySection();
     renderOverview();
+  } else if (id === 'history') {
+    _returnCardsToPool();
+    _hideContentArea();
+    showHistoryView();
+  } else if (id === 'perf-history') {
+    _returnCardsToPool();
+    _hideContentArea();
+    showPerfHistoryView();
   } else {
+    _hideHistorySection();
     showModuleView(id);
   }
 
   // En móvil cerrar sidebar al navegar
   if (window.innerWidth <= 900) closeSidebar();
+}
+
+function _hideHistorySection() {
+  const hs = _id('history-section');
+  if (hs) hs.classList.add('hidden');
+  const ph = _id('perf-history-section');
+  if (ph) ph.classList.add('hidden');
+  const ca = _id('content-area');
+  if (ca) ca.style.display = '';
+}
+function _hideContentArea() {
+  const ca = _id('content-area');
+  if (ca) ca.style.display = 'none';
 }
 
 // ── Renderiza el grid de resumen ─────────────────────────────────────────────
@@ -179,9 +221,13 @@ async function _triggerModuleScan(id) {
 
   if (id === 'perf')     { if (typeof togglePerf   === 'function') togglePerf();   return; }
   if (id === 'updates')  { if (typeof scanUpdates  === 'function') scanUpdates();  return; }
-  if (id === 'wupdates') { if (typeof checkWindowsUpdates === 'function') checkWindowsUpdates(); return; }
-  if (id === 'wifi')     { if (typeof scanWifi  === 'function') scanWifi();  return; }
-  if (id === 'certs')    { if (typeof scanCerts === 'function') scanCerts(); return; }
+  if (id === 'wupdates')    { if (typeof checkWindowsUpdates === 'function') checkWindowsUpdates(); return; }
+  if (id === 'wifi')        { if (typeof scanWifi  === 'function') scanWifi();  return; }
+  if (id === 'certs')       { if (typeof scanCerts === 'function') scanCerts(); return; }
+  if (id === 'connections') { if (typeof scanConnections === 'function') scanConnections(); return; }
+  if (id === 'processes')  { if (typeof scanProcesses  === 'function') scanProcesses();  return; }
+  if (id === 'software')       { if (typeof scanSoftware      === 'function') scanSoftware();      return; }
+  if (id === 'firewall-rules') { if (typeof scanFirewallRules === 'function') scanFirewallRules(); return; }
 
   if (btn) {
     btn.disabled = true;
@@ -208,7 +254,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -303,6 +349,8 @@ const MODULES = [
   { id: 'energy',       label: 'Leyendo sensores de energía y temperatura…',  step: 'pstep-energy'       },
   { id: 'privacy',      label: 'Auditando privacidad y archivos temporales…', step: 'pstep-privacy'      },
   { id: 'services',     label: 'Inspeccionando servicios de Windows…',       step: 'pstep-services'     },
+  { id: 'processes',   label: 'Analizando procesos activos…',               step: 'pstep-processes'    },
+  { id: 'dns',         label: 'Comprobando configuración DNS…',             step: 'pstep-dns'          },
 ];
 
 let scanResults = {};
@@ -321,6 +369,10 @@ const MODULE_CMDS = {
   connectivity: ['ping -n 4 8.8.8.8', 'socket.gethostbyname("www.google.com")', 'route print 0.0.0.0'],
   energy:       ['powercfg /getactivescheme', 'psutil.sensors_battery()', 'wmi.WMI(namespace="root\\\\OpenHardwareMonitor").Sensor()'],
   privacy:      ['winreg HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection', 'winreg HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore', 'Get-WinEvent -FilterHashtable @{LogName="System";Level=1,2}'],
+  connections:  ['psutil.net_connections(kind="tcp")', 'socket.gethostbyaddr(remote_ip)', 'psutil.Process(pid).name()'],
+  processes:        ['psutil.process_iter(["pid","name","cpu_percent","memory_percent"])', 'proc.memory_info().rss', 'proc.terminate()'],
+  dns:              ['Get-DnsClientServerAddress -AddressFamily IPv4', 'winreg HKLM\\SYSTEM\\...\\Dnscache\\EnableAutoDoh'],
+  'firewall-rules': ['Get-NetFirewallRule -Enabled True | Where-Object {...} | ConvertTo-Json'],
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
@@ -371,6 +423,19 @@ async function startScan() {
   updateLastScan();
   calculateScore();
   scanning = false;
+  _autoSaveHistory();
+}
+
+async function _autoSaveHistory() {
+  try {
+    const scoreEl = document.querySelector('.score-number');
+    const score   = scoreEl ? parseInt(scoreEl.textContent, 10) || 0 : 0;
+    await fetch('/api/history/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score, results: scanResults }),
+    });
+  } catch (_) { /* silencioso */ }
 }
 
 /* ── Fetch ───────────────────────────────────────────────────────────────── */
@@ -421,6 +486,26 @@ function renderCard(id, data) {
     body.innerHTML = renderCerts(data);
     const btnC = document.getElementById('btn-certs');
     if (btnC) btnC.style.display = '';
+  } else if (id === 'connections') {
+    body.innerHTML = renderConnections(data);
+    const btnConn = document.getElementById('btn-connections');
+    if (btnConn) btnConn.style.display = '';
+  } else if (id === 'processes') {
+    body.innerHTML = renderProcesses(data);
+    const btnProc = document.getElementById('btn-processes');
+    if (btnProc) btnProc.style.display = '';
+  } else if (id === 'software') {
+    body.innerHTML = renderSoftware(data);
+    const btnSoft = document.getElementById('btn-software');
+    if (btnSoft) btnSoft.style.display = '';
+  } else if (id === 'dns') {
+    body.innerHTML = renderDns(data);
+  } else if (id === 'firewall-rules') {
+    body.innerHTML = renderFirewallRules(data);
+    const btnFw = document.getElementById('btn-firewall-rules');
+    if (btnFw) btnFw.style.display = '';
+  } else if (id === 'startup') {
+    body.innerHTML = renderStartup(data);
   } else {
     body.innerHTML = renderGeneric(data);
   }
@@ -998,6 +1083,10 @@ function renderPrivacy(data) {
 
   const rows = data.items.map(item => {
     const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    const isTelemetry = item.name === 'Telemetría de Windows';
+    const telemetryBtn = isTelemetry && item.status !== 'ok' ? `
+      <button class="btn-quickfix" onclick="doFixTelemetry(this)">🔕 Desactivar telemetría</button>` : '';
+
     const isTemp = item.name === 'Archivos temporales';
     const cleanBtn = isTemp && item.status !== 'ok' ? `
       <button class="btn-clean-temp" id="btn-clean-temp" onclick="doCleanTemp(this)">
@@ -1019,6 +1108,7 @@ function renderPrivacy(data) {
         <div class="item-right">
           <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
           ${cleanBtn}
+          ${telemetryBtn}
         </div>
       </div>`;
   }).join('');
@@ -1077,6 +1167,9 @@ function renderEnergy(data) {
       </div>` : '';
 
     const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    const fixBtn = (item.name === 'Plan de energía' && item.status !== 'ok')
+      ? `<button class="btn-quickfix" onclick="doFixEnergyHigh(this)">⚡ Aplicar Alto Rendimiento</button>`
+      : '';
 
     return `
       <div class="item ${escHtml(item.status)}">
@@ -1086,6 +1179,7 @@ function renderEnergy(data) {
           <span class="item-msg">${escHtml(item.message)}</span>
           ${detail}
           ${gauge}
+          ${fixBtn}
         </div>
         <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
       </div>`;
@@ -1635,6 +1729,70 @@ async function scanWifi() {
   }
 }
 
+/* ── Conexiones TCP salientes ────────────────────────────────────────────── */
+async function scanConnections() {
+  const btn  = document.getElementById('btn-connections');
+  const body = document.getElementById('body-connections');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🔌</span><p>Resolviendo conexiones activas…</p></div>`;
+
+  try {
+    const data = await fetchModule('connections');
+    renderCard('connections', data);
+    scanResults['connections'] = data;
+    updateNavDot('connections', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`;
+  }
+}
+
+function renderConnections(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px">
+        <span class="empty-emoji">✅</span>
+        <p>Sin conexiones TCP externas activas en este momento.</p>
+      </div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon  = statusIcon(item.status);
+    const badge = `<span class="conn-port-badge ${item.status}">${escHtml(item.value)}</span>`;
+    return `
+      <tr class="conn-row conn-${item.status}">
+        <td class="conn-icon">${icon}</td>
+        <td class="conn-proc">${escHtml(item.name)}</td>
+        <td class="conn-dest">${escHtml(item.message)}</td>
+        <td class="conn-port">${badge}</td>
+      </tr>
+      ${item.detail ? `<tr class="conn-detail-row"><td colspan="4"><span class="conn-detail">${escHtml(item.detail)}</span></td></tr>` : ''}`;
+  }).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="conn-table-wrap">
+      <table class="conn-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Proceso</th>
+            <th>Destino</th>
+            <th>Puerto</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 /* ── Renderer de Actualizaciones Windows ─────────────────────────────────── */
 function renderWupdates(data) {
   const SEVERITY_LABEL = { danger: 'Crítica / Importante', warning: 'Moderada', ok: 'Baja' };
@@ -1838,4 +1996,585 @@ function renderInventory(data) {
   const sections = ORDER.map(renderSection).filter(Boolean).join('');
 
   return `<div class="card-summary">${escHtml(data.summary || '')}</div>${sections}`;
+}
+
+/* ── Procesos activos ─────────────────────────────────────────────────────── */
+async function scanProcesses() {
+  const btn  = document.getElementById('btn-processes');
+  const body = document.getElementById('body-processes');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">⚡</span><p>Obteniendo procesos activos…</p></div>`;
+
+  try {
+    const data = await fetchModule('processes');
+    renderCard('processes', data);
+    scanResults['processes'] = data;
+    updateNavDot('processes', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`;
+  }
+}
+
+function renderProcesses(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">✅</span><p>Sin procesos con consumo elevado.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon     = statusIcon(item.status);
+    const killBtn  = item.killable
+      ? `<button class="btn-kill" onclick="killProcess(${item.pid}, ${JSON.stringify(item.name)})">Terminar</button>`
+      : '';
+    return `
+      <tr class="proc-row">
+        <td class="proc-icon">${icon}</td>
+        <td class="proc-name">${escHtml(item.name)}</td>
+        <td class="proc-stats">${escHtml(item.message)}</td>
+        <td class="proc-pid">${escHtml(item.value)}</td>
+        <td class="proc-user">${escHtml(item.detail || '')}</td>
+        <td>${killBtn}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="proc-table-wrap">
+      <table class="proc-table">
+        <thead><tr><th></th><th>Proceso</th><th>CPU / RAM</th><th>PID</th><th>Usuario</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function killProcess(pid, name) {
+  if (!confirm(`¿Terminar el proceso "${name}" (PID ${pid})?\nEsto cerrará la aplicación de forma forzada.`)) return;
+  try {
+    const res  = await fetch(`/api/processes/${pid}/kill`, { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg || (data.ok ? 'Proceso terminado.' : 'No se pudo terminar el proceso.'));
+    if (data.ok) scanProcesses();
+  } catch (e) {
+    alert('Error de comunicación: ' + e.message);
+  }
+}
+
+/* ── Historial de escaneos ────────────────────────────────────────────────── */
+async function showHistoryView() {
+  const hs   = _id('history-section');
+  const body = _id('history-body');
+  if (!hs) return;
+
+  hs.classList.remove('hidden');
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">⏳</span><p>Cargando…</p></div>`;
+
+  try {
+    const res   = await fetch('/api/history');
+    const scans = await res.json();
+    if (body) body.innerHTML = renderHistoryView(scans);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="history-empty">Error al cargar historial: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderHistoryView(scans) {
+  if (!scans || scans.length === 0) {
+    return `<div class="history-empty">Sin escaneos guardados aún.<br>Ejecuta "Escanear Sistema" para registrar el primer análisis.</div>`;
+  }
+
+  const MODULE_ORDER = ['hardware','security','protection','startup','drivers','network',
+    'connectivity','maintenance','updates','energy','privacy','services','processes'];
+
+  const rows = scans.map(s => {
+    const ts      = s.ts ? s.ts.replace('T', ' ') : '—';
+    const score   = s.score ?? '—';
+    const scoreColor = s.score >= 80 ? '#2ed573' : s.score >= 60 ? '#ffa502' : '#ff4757';
+    const mods    = s.modules || {};
+    const dots    = MODULE_ORDER.map(id => {
+      const m  = mods[id];
+      const st = m ? m.status : 'unknown';
+      const lbl = m ? `${id}: ${m.summary || st}` : id;
+      return `<span class="hist-dot ${st}" title="${escHtml(lbl)}"></span>`;
+    }).join('');
+
+    return `
+      <tr class="hist-row">
+        <td class="hist-ts">${escHtml(ts)}</td>
+        <td class="hist-score" style="color:${scoreColor}">${score}</td>
+        <td><div class="hist-dots">${dots}</div></td>
+        <td style="display:flex;gap:6px;align-items:center">
+          <button class="btn-hist-compare" onclick="showCompare(${JSON.stringify(s).replace(/</g,'\\u003c')})">Comparar</button>
+          <button class="btn-hist-del" onclick="deleteHistoryScan(${s.id}, this)">Borrar</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead><tr><th>Fecha</th><th>Score</th><th>Módulos</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteHistoryScan(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await fetch(`/api/history/${id}`, { method: 'DELETE' });
+    showHistoryView();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Borrar'; }
+    alert('Error: ' + e.message);
+  }
+}
+
+/* ── Comparar escaneos ────────────────────────────────────────────────────── */
+function showCompare(historicScan) {
+  const hasCurrent = Object.keys(scanResults).length > 0;
+  if (!hasCurrent) {
+    alert('Ejecuta primero "Escanear Sistema" para tener datos actuales con los que comparar.');
+    return;
+  }
+  const body = _id('history-body');
+  if (body) body.innerHTML = renderCompare(historicScan);
+}
+
+function renderCompare(hist) {
+  const _STATUS_SCORE = { ok: 0, warning: 1, danger: 2 };
+  const _STATUS_LABEL = { ok: '✓ ok', warning: '~ warning', danger: '✗ danger' };
+  const _STATUS_COLOR = { ok: '#2ed573', warning: '#ffa502', danger: '#ff4757' };
+
+  const moduleIds = Array.from(new Set([
+    ...Object.keys(hist.modules || {}),
+    ...Object.keys(scanResults).filter(id => scanResults[id] && scanResults[id].status),
+  ]));
+
+  const rows = moduleIds.map(id => {
+    const hMod  = (hist.modules || {})[id];
+    const cMod  = scanResults[id];
+    if (!hMod && !cMod) return '';
+
+    const hSt   = hMod ? hMod.status : null;
+    const cSt   = cMod ? cMod.status : null;
+    const hScore = hSt ? (_STATUS_SCORE[hSt] ?? 3) : 3;
+    const cScore = cSt ? (_STATUS_SCORE[cSt] ?? 3) : 3;
+
+    let change = '→', changeColor = 'var(--text-muted)';
+    if (hSt && cSt) {
+      if (cScore < hScore)      { change = '↑ Mejoró';    changeColor = '#2ed573'; }
+      else if (cScore > hScore) { change = '↓ Empeoró';   changeColor = '#ff4757'; }
+      else                      { change = '→ Sin cambio'; }
+    } else if (!hSt && cSt) {
+      change = '★ Nuevo'; changeColor = '#74b9ff';
+    }
+
+    const meta  = MODULE_META[id] || { label: id, emoji: '•' };
+    const hCell = hSt ? `<span style="color:${_STATUS_COLOR[hSt]}">${_STATUS_LABEL[hSt]}</span>` : '<span style="color:var(--text-muted)">—</span>';
+    const cCell = cSt ? `<span style="color:${_STATUS_COLOR[cSt]}">${_STATUS_LABEL[cSt]}</span>` : '<span style="color:var(--text-muted)">—</span>';
+
+    return `
+      <tr class="hist-row">
+        <td style="white-space:nowrap">${meta.emoji} ${escHtml(meta.label)}</td>
+        <td>${hCell}</td>
+        <td>${cCell}</td>
+        <td style="color:${changeColor};font-weight:600;white-space:nowrap">${change}</td>
+      </tr>`;
+  }).filter(Boolean).join('');
+
+  const ts = hist.ts ? hist.ts.replace('T', ' ') : '—';
+  const scoreColor = hist.score >= 80 ? '#2ed573' : hist.score >= 60 ? '#ffa502' : '#ff4757';
+
+  return `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="module-back-btn" onclick="showHistoryView()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+        </svg> Volver al historial
+      </button>
+      <span style="font-size:0.82rem;color:var(--text-soft)">
+        Escaneo histórico del <strong>${escHtml(ts)}</strong>
+        — score <strong style="color:${scoreColor}">${hist.score ?? '—'}</strong>
+      </span>
+    </div>
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead><tr><th>Módulo</th><th>Histórico</th><th>Actual</th><th>Cambio</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+/* ── Programas instalados ─────────────────────────────────────────────────── */
+async function scanSoftware() {
+  const btn  = document.getElementById('btn-software');
+  const body = document.getElementById('body-software');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Cargando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">📦</span><p>Leyendo registro de Windows…</p></div>`;
+  try {
+    const data = await fetchModule('software');
+    renderCard('software', data);
+    scanResults['software'] = data;
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`;
+  }
+}
+
+function renderSoftware(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">📭</span><p>No se encontraron programas.</p></div>`;
+  }
+
+  let filterHtml = `
+    <div class="soft-filter-bar">
+      <input type="text" class="soft-search" id="soft-search-input"
+        placeholder="Filtrar programas…" oninput="filterSoftware(this.value)">
+      <span class="soft-count" id="soft-count">${data.items.length} programas</span>
+    </div>`;
+
+  const rows = data.items.map((item, idx) => `
+    <tr class="soft-row" data-name="${escHtml(item.name.toLowerCase())}">
+      <td class="soft-name">${escHtml(item.name)}</td>
+      <td class="soft-version">${escHtml(item.version)}</td>
+      <td class="soft-pub">${escHtml(item.publisher)}</td>
+      <td class="soft-date">${escHtml(item.date)}</td>
+      <td class="soft-size">${item.size_mb > 0 ? item.size_mb + ' MB' : '—'}</td>
+      <td><button class="btn-uninstall" onclick="uninstallSoftware(${JSON.stringify(item.name).replace(/</g,'\\u003c')}, this)">Desinstalar</button></td>
+    </tr>`).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    ${filterHtml}
+    <div class="soft-table-wrap">
+      <table class="soft-table" id="soft-table">
+        <thead><tr><th>Nombre</th><th>Versión</th><th>Fabricante</th><th>Instalado</th><th>Tamaño</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function filterSoftware(q) {
+  const rows  = document.querySelectorAll('#soft-table .soft-row');
+  const lower = q.toLowerCase();
+  let visible = 0;
+  rows.forEach(r => {
+    const match = r.dataset.name.includes(lower);
+    r.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  const cnt = document.getElementById('soft-count');
+  if (cnt) cnt.textContent = `${visible} programas`;
+}
+
+async function uninstallSoftware(name, btn) {
+  if (!confirm(`¿Desinstalar "${name}"?\nEsto ejecutará winget uninstall de forma silenciosa.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Desinstalando…'; }
+  try {
+    const res  = await fetch('/api/software/uninstall', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    alert(data.msg || (data.ok ? 'Desinstalado.' : 'No se pudo desinstalar.'));
+    if (data.ok) scanSoftware();
+    else if (btn) { btn.disabled = false; btn.textContent = 'Desinstalar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Desinstalar'; }
+  }
+}
+
+/* ── Arranque — renderer con acciones ────────────────────────────────────── */
+function renderStartup(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">✅</span><p>Sin entradas de arranque detectadas.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon   = statusIcon(item.status);
+    const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    const canDisable = item.fix_name && item.value !== 'Sistema';
+    const disableBtn = canDisable
+      ? `<button class="btn-quickfix" onclick="doDisableStartup(${JSON.stringify(item.fix_hive)},${JSON.stringify(item.fix_key)},${JSON.stringify(item.fix_name)},this)">✕ Deshabilitar</button>`
+      : '';
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${icon}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+          ${disableBtn}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}`;
+}
+
+/* ── Quickfix handlers ───────────────────────────────────────────────────── */
+async function doFixEnergyHigh(btn) {
+  if (!confirm('¿Cambiar el plan de energía a Alto Rendimiento?')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    const res  = await fetch('/api/quickfix/energy-high', { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('energy');
+    else if (btn) { btn.disabled = false; btn.textContent = '⚡ Aplicar Alto Rendimiento'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Aplicar Alto Rendimiento'; }
+  }
+}
+
+async function doFixTelemetry(btn) {
+  if (!confirm('¿Desactivar la telemetría de Windows?\nSe requiere reinicio para que el cambio tenga efecto.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    const res  = await fetch('/api/quickfix/telemetry-off', { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('privacy');
+    else if (btn) { btn.disabled = false; btn.textContent = '🔕 Desactivar telemetría'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🔕 Desactivar telemetría'; }
+  }
+}
+
+/* ── DNS activo ──────────────────────────────────────────────────────────── */
+function renderDns(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">🌐</span><p>Sin información DNS disponible.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon   = statusIcon(item.status);
+    const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    let fixBtns  = '';
+    if (item.fix_available && item.servers && item.servers.length > 0) {
+      const iface = item.interface;
+      fixBtns = `
+        <div class="dns-fix-bar">
+          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'1.1.1.1','1.0.0.1',this)">
+            🔒 Cloudflare (1.1.1.1)
+          </button>
+          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'8.8.8.8','8.8.4.4',this)">
+            🔍 Google (8.8.8.8)
+          </button>
+        </div>`;
+    }
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${icon}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+          ${fixBtns}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}`;
+}
+
+async function doSetDns(iface, dns1, dns2, btn) {
+  if (!confirm(`¿Cambiar el DNS de "${iface}" a ${dns1}?`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    const res  = await fetch('/api/dns/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interface: iface, dns1, dns2 }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('dns');
+    else if (btn) { btn.disabled = false; btn.textContent = btn.textContent.replace('…', ''); }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+/* ── Reglas de firewall ──────────────────────────────────────────────────── */
+async function scanFirewallRules() {
+  const btn  = document.getElementById('btn-firewall-rules');
+  const body = document.getElementById('body-firewall-rules');
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`; }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🛡️</span><p>Obteniendo reglas del firewall…</p></div>`;
+  try {
+    const data = await fetchModule('firewall-rules');
+    renderCard('firewall-rules', data);
+    scanResults['firewall-rules'] = data;
+    updateNavDot('firewall-rules', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`; }
+}
+
+function renderFirewallRules(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">✅</span><p>Sin reglas no estándar habilitadas.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon = statusIcon(item.status);
+    const delBtn = `<button class="btn-kill" onclick="deleteFirewallRule(${JSON.stringify(item.rule_name).replace(/</g,'\\u003c')},this)">Eliminar</button>`;
+    return `
+      <tr class="proc-row">
+        <td class="proc-icon">${icon}</td>
+        <td class="proc-name" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</td>
+        <td class="proc-stats">${escHtml(item.message)}</td>
+        <td>${delBtn}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="proc-table-wrap">
+      <table class="proc-table">
+        <thead><tr><th></th><th>Regla</th><th>Detalles</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteFirewallRule(name, btn) {
+  if (!confirm(`¿Eliminar la regla de firewall "${name}"?`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
+  try {
+    const res  = await fetch('/api/firewall-rules/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) scanFirewallRules();
+    else if (btn) { btn.disabled = false; btn.textContent = 'Eliminar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Eliminar'; }
+  }
+}
+
+/* ── Tendencias de rendimiento ───────────────────────────────────────────── */
+async function showPerfHistoryView() {
+  const sec  = _id('perf-history-section');
+  const body = _id('perf-history-body');
+  if (!sec) return;
+  sec.classList.remove('hidden');
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">⏳</span><p>Cargando…</p></div>`;
+  try {
+    const res  = await fetch('/api/perf/history');
+    const data = await res.json();
+    if (body) body.innerHTML = renderPerfHistoryView(data);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="history-empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function _svgSparkline(values, color, h = 70) {
+  if (!values || values.length < 2) return `<div class="perf-hist-empty">Sin datos</div>`;
+  const w    = 600;
+  const max  = Math.max(...values, 1);
+  const pts  = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = h - (v / max) * (h - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const areaClose = `${w},${h} 0,${h}`;
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" class="perf-spark-svg">
+    <polygon points="${pts} ${areaClose}" fill="${color}" fill-opacity="0.12" stroke="none"/>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function renderPerfHistoryView(snaps) {
+  if (!snaps || snaps.length === 0) {
+    return `<div class="history-empty">Sin snapshots registrados aún.<br>PC Guardian guarda uno cada 5 minutos mientras está en ejecución.</div>`;
+  }
+
+  const cpu  = snaps.map(s => s.cpu  ?? 0);
+  const ram  = snaps.map(s => s.ram  ?? 0);
+  const disk = snaps.map(s => s.disk ?? 0);
+  const gpu  = snaps.map(s => s.gpu  ?? null).filter(v => v !== null);
+
+  const tsFirst = snaps[0]?.ts?.replace('T',' ') || '';
+  const tsLast  = snaps[snaps.length - 1]?.ts?.replace('T',' ') || '';
+
+  const avgOf = arr => arr.length ? (arr.reduce((a,b) => a+b, 0) / arr.length).toFixed(1) : '—';
+  const maxOf = arr => arr.length ? Math.max(...arr).toFixed(1) : '—';
+
+  const charts = [
+    { label: 'CPU',    values: cpu,  color: '#4f8ef7' },
+    { label: 'RAM',    values: ram,  color: '#a29bfe' },
+    { label: 'Disco',  values: disk, color: '#fdcb6e' },
+  ];
+  if (gpu.length > 1) charts.push({ label: 'GPU', values: gpu, color: '#00cec9' });
+
+  const chartHtml = charts.map(c => `
+    <div class="perf-chart-block">
+      <div class="perf-chart-header">
+        <span class="perf-chart-label">${c.label}</span>
+        <span class="perf-chart-stats">
+          Promedio <strong>${avgOf(c.values)}%</strong> · Máx <strong>${maxOf(c.values)}%</strong>
+        </span>
+      </div>
+      <div class="perf-chart-body">${_svgSparkline(c.values, c.color)}</div>
+      <div class="perf-chart-axis">
+        <span>${escHtml(tsFirst)}</span>
+        <span>${snaps.length} puntos</span>
+        <span>${escHtml(tsLast)}</span>
+      </div>
+    </div>`).join('');
+
+  return `
+    <p class="perf-hist-meta">Últimas 24 h · ${snaps.length} snapshots</p>
+    <div class="perf-charts-grid">${chartHtml}</div>`;
+}
+
+async function doDisableStartup(hive, key, name, btn) {
+  if (!confirm(`¿Deshabilitar "${name}" del arranque automático?\nPuedes volver a habilitarlo desde el Administrador de tareas.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Deshabilitando…'; }
+  try {
+    const res  = await fetch('/api/quickfix/disable-startup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hive, key, name }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('startup');
+    else if (btn) { btn.disabled = false; btn.textContent = '✕ Deshabilitar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✕ Deshabilitar'; }
+  }
 }
