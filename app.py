@@ -25,6 +25,7 @@ from analyzer.wupdates      import check_windows_updates, apply_windows_update
 from analyzer.wifi          import analyze_wifi
 from analyzer.certs         import analyze_certs, delete_cert
 from analyzer.services      import analyze_services
+from analyzer import history
 
 if getattr(sys, "frozen", False):
     _BASE = sys._MEIPASS
@@ -240,6 +241,45 @@ def do_update(package_id):
     result = update_package(package_id)
     invalidate_cache("updates")
     return jsonify(result)
+
+
+# ── Historial de escaneos ─────────────────────────────────────────────────────
+@app.route("/api/history", methods=["GET"])
+def history_list():
+    return jsonify({"scans": history.list_scans(limit=int(request.args.get("limit", 50)))})
+
+
+@app.route("/api/history", methods=["POST"])
+def history_save():
+    body = request.get_json(silent=True) or {}
+    return jsonify(history.save_scan(body.get("results") or {}, body.get("score")))
+
+
+@app.route("/api/history/<int:scan_id>", methods=["GET"])
+def history_get(scan_id):
+    scan = history.get_scan(scan_id)
+    if scan is None:
+        return jsonify({"success": False, "message": "Ese escaneo ya no existe."}), 404
+    return jsonify(scan)
+
+
+@app.route("/api/history/<int:scan_id>", methods=["DELETE"])
+def history_delete(scan_id):
+    return jsonify(history.delete_scan(scan_id))
+
+
+@app.route("/api/history/clear", methods=["POST"])
+def history_clear():
+    return jsonify(history.clear_history())
+
+
+@app.route("/api/history/diff")
+def history_diff():
+    try:
+        a, b = int(request.args["a"]), int(request.args["b"])
+    except (KeyError, ValueError):
+        return jsonify({"success": False, "message": "Faltan los parámetros a y b."}), 400
+    return jsonify(history.diff_scans(a, b))
 
 
 # ── Arranque ──────────────────────────────────────────────────────────────────

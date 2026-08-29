@@ -60,7 +60,9 @@ function navigateTo(id) {
   if (crumb) {
     crumb.textContent = id === 'overview'
       ? 'Resumen'
-      : (MODULE_META[id] ? MODULE_META[id].label : id);
+      : id === 'history'
+        ? 'Historial de escaneos'
+        : (MODULE_META[id] ? MODULE_META[id].label : id);
   }
 
   // Sidebar footer — última vez escaneado
@@ -74,6 +76,8 @@ function navigateTo(id) {
   // Render vista
   if (id === 'overview') {
     renderOverview();
+  } else if (id === 'history') {
+    renderHistoryView();
   } else {
     showModuleView(id);
   }
@@ -115,7 +119,7 @@ function renderOverview() {
           <span class="${dotClass}"></span>
         </div>
         <div class="overview-tile-label">${meta.label}</div>
-        <div class="overview-tile-sub">${subText}</div>
+        <div class="overview-tile-sub">${escHtml(subText)}</div>
         <div class="overview-tile-footer">
           <button class="overview-tile-btn" onclick="event.stopPropagation();navigateTo('${id}')">Ver detalles</button>
         </div>
@@ -1342,6 +1346,7 @@ function calculateScore() {
   }
 
   const score = Math.round(weightedSum / totalWeight);
+  _lastScore = score;   // lo consume saveScanToHistory()
 
   // Color según score
   let color, label;
@@ -1914,3 +1919,216 @@ async function elevateApp() {
 }
 
 document.addEventListener('DOMContentLoaded', checkAdmin);
+
+
+/* ── Historial de escaneos ────────────────────────────────────────────────── */
+// Un escaneo suelto solo dice como esta el equipo ahora. Guardarlos permite
+// responder la pregunta util: que ha cambiado desde la ultima vez.
+
+const STATUS_ES = { ok: 'Correcto', warning: 'Aviso', danger: 'Critico' };
+let _lastScore = null;
+
+async function saveScanToHistory() {
+  try {
+    const res = await fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ results: scanResults, score: _lastScore }),
+    });
+    const data = await res.json();
+    if (!data.success) console.warn('historial:', data.message);
+  } catch (e) {
+    console.warn('No se pudo guardar en el historial:', e.message);
+  }
+}
+
+function _fmtFecha(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('es-ES', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+function _scoreClass(score) {
+  if (score == null) return 'muted';
+  return score >= 80 ? 'ok' : score >= 55 ? 'warning' : 'danger';
+}
+
+async function renderHistoryView() {
+  const area = _id('content-area');
+  if (!area) return;
+  _returnCardsToPool();
+  area.innerHTML = '<div class="history-loading">Cargando historial\u2026</div>';
+
+  let scans = [];
+  try {
+    const res = await fetch('/api/history');
+    scans = (await res.json()).scans || [];
+  } catch (e) {
+    area.innerHTML = `<div class="history-empty"><p>No se pudo leer el historial: ${escHtml(e.message)}</p></div>`;
+    return;
+  }
+
+  if (!scans.length) {
+    area.innerHTML = `
+      <div class="history-empty">
+        <span class="empty-emoji">\u{1F553}</span>
+        <p>Todavia no hay escaneos guardados.</p>
+        <p class="history-empty-sub">Cada vez que pulses "Escanear Sistema" se guardara
+           una instantanea aqui, y podras comparar dos cualesquiera.</p>
+      </div>`;
+    return;
+  }
+
+  const maxIssues = Math.max(1, ...scans.map(s => s.issue_count || 0));
+
+  const rows = scans.map((s, i) => {
+    const prev = scans[i + 1];   // el listado viene del mas nuevo al mas viejo
+    let delta = '';
+    if (prev && s.score != null && prev.score != null) {
+      const d = s.score - prev.score;
+      if (d !== 0) {
+        delta = `<span class="history-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '\u25B2' : '\u25BC'} ${Math.abs(d)}</span>`;
+      }
+    }
+    const barPct = Math.round(((s.issue_count || 0) / maxIssues) * 100);
+    return `
+      <tr>
+        <td><input type="checkbox" class="history-pick" value="${s.id}" onchange="_syncCompareBtn()"></td>
+        <td class="history-date">${escHtml(_fmtFecha(s.created_at))}</td>
+        <td class="history-score s-${_scoreClass(s.score)}">${s.score == null ? '\u2014' : s.score} ${delta}</td>
+        <td>
+          <div class="history-bar"><span style="width:${barPct}%"></span></div>
+          <span class="history-issues">${s.issue_count || 0} incidencia${s.issue_count === 1 ? '' : 's'}</span>
+        </td>
+        <td class="history-mods">${s.module_count} modulos</td>
+        <td><button class="history-del" onclick="deleteHistoryEntry(${s.id})" title="Eliminar">\u2715</button></td>
+      </tr>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div class="history-view">
+      <div class="history-header">
+        <div>
+          <h2>Historial de escaneos</h2>
+          <p class="history-sub">${scans.length} escaneo${scans.length === 1 ? '' : 's'} guardado${scans.length === 1 ? '' : 's'}.
+             Marca dos para ver exactamente que cambio entre ellos.</p>
+        </div>
+        <div class="history-actions">
+          <button id="history-compare-btn" class="history-btn primary" disabled onclick="compareSelectedScans()">
+            Comparar seleccionados
+          </button>
+          <button class="history-btn" onclick="clearHistory()">Vaciar historial</button>
+        </div>
+      </div>
+
+      <table class="history-table">
+        <thead>
+          <tr><th></th><th>Fecha</th><th>Puntuacion</th><th>Incidencias</th><th></th><th></th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div id="history-diff"></div>
+    </div>`;
+}
+
+function _syncCompareBtn() {
+  const picked = document.querySelectorAll('.history-pick:checked');
+  const btn = _id('history-compare-btn');
+  if (btn) btn.disabled = picked.length !== 2;
+}
+
+async function deleteHistoryEntry(id) {
+  if (!confirm('\u00bfEliminar este escaneo del historial?')) return;
+  await fetch(`/api/history/${id}`, { method: 'DELETE' });
+  renderHistoryView();
+}
+
+async function clearHistory() {
+  if (!confirm('Se borraran todos los escaneos guardados. \u00bfContinuar?')) return;
+  await fetch('/api/history/clear', { method: 'POST' });
+  renderHistoryView();
+}
+
+async function compareSelectedScans() {
+  const picked = [...document.querySelectorAll('.history-pick:checked')].map(c => +c.value);
+  if (picked.length !== 2) return;
+  // El id mas bajo es el escaneo mas antiguo: ese es la referencia.
+  const [a, b] = picked.sort((x, y) => x - y);
+
+  const box = _id('history-diff');
+  box.innerHTML = '<div class="history-loading">Comparando\u2026</div>';
+
+  let d;
+  try {
+    d = await (await fetch(`/api/history/diff?a=${a}&b=${b}`)).json();
+  } catch (e) {
+    box.innerHTML = `<div class="history-empty"><p>${escHtml(e.message)}</p></div>`;
+    return;
+  }
+  if (!d.success) {
+    box.innerHTML = `<div class="history-empty"><p>${escHtml(d.message)}</p></div>`;
+    return;
+  }
+
+  const itemList = (items, cls) => items.length
+    ? `<ul class="diff-items">${items.map(i => `
+        <li class="${cls}">
+          <span class="diff-mod">${escHtml((MODULE_META[i.module] || {}).label || i.module)}</span>
+          <strong>${escHtml(i.name)}</strong>
+          <span class="diff-msg">${escHtml(i.message)}</span>
+          ${i.before ? `<span class="diff-arrow">${escHtml(STATUS_ES[i.before] || i.before)} \u2192 ${escHtml(STATUS_ES[i.status] || i.status)}</span>` : ''}
+        </li>`).join('')}</ul>`
+    : '<p class="diff-none">Nada en esta categoria.</p>';
+
+  const modRows = d.modules.filter(m => m.trend !== 'same').map(m => `
+    <li class="trend-${m.trend}">
+      <strong>${escHtml(m.title)}</strong>
+      <span>${escHtml(STATUS_ES[m.before] || m.before)} \u2192 ${escHtml(STATUS_ES[m.after] || m.after)}</span>
+      <span class="diff-msg">${m.issues_before} \u2192 ${m.issues_after} incidencias</span>
+    </li>`).join('');
+
+  const scoreLine = d.score_delta == null
+    ? ''
+    : `<div class="diff-score ${d.score_delta >= 0 ? 'up' : 'down'}">
+         Puntuacion ${d.a.score} \u2192 ${d.b.score}
+         <span>(${d.score_delta > 0 ? '+' : ''}${d.score_delta})</span>
+       </div>`;
+
+  box.innerHTML = `
+    <div class="diff-panel">
+      <div class="diff-header">
+        <h3>Cambios entre los dos escaneos</h3>
+        <p class="history-sub">${escHtml(_fmtFecha(d.a.created_at))} \u2192 ${escHtml(_fmtFecha(d.b.created_at))}</p>
+        ${scoreLine}
+        <p class="history-sub">${d.issue_delta === 0 ? 'Mismo numero de incidencias.'
+          : d.issue_delta > 0 ? `${d.issue_delta} incidencia(s) mas que antes.`
+          : `${Math.abs(d.issue_delta)} incidencia(s) menos que antes.`}</p>
+      </div>
+
+      ${modRows ? `<section class="diff-section">
+        <h4>Modulos que cambiaron de estado</h4>
+        <ul class="diff-modules">${modRows}</ul>
+      </section>` : ''}
+
+      <section class="diff-section">
+        <h4>Nuevos problemas <span class="diff-count danger">${d.new_issues.length}</span></h4>
+        ${itemList(d.new_issues, 'is-new')}
+      </section>
+
+      <section class="diff-section">
+        <h4>Resueltos <span class="diff-count ok">${d.fixed.length}</span></h4>
+        ${itemList(d.fixed, 'is-fixed')}
+      </section>
+
+      ${d.changed.length ? `<section class="diff-section">
+        <h4>Empeoraron <span class="diff-count warning">${d.changed.length}</span></h4>
+        ${itemList(d.changed, 'is-changed')}
+      </section>` : ''}
+    </div>`;
+
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
