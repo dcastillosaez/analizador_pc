@@ -349,6 +349,18 @@
         </div>
       </header>
 
+      <!-- Aviso de privilegios: varios checks necesitan elevación -->
+      <div id="admin-banner" class="admin-banner hidden" role="status">
+        <span class="admin-banner-icon" aria-hidden="true">🛡️</span>
+        <div class="admin-banner-text">
+          <strong>PC Guardian no se está ejecutando como administrador.</strong>
+          <span>Puertos del sistema, estado del antivirus, controladores y actualizaciones
+                mostrarán información incompleta.</span>
+        </div>
+        <button class="admin-banner-btn" onclick="elevateApp()">Reiniciar como administrador</button>
+        <button class="admin-banner-close" onclick="dismissAdminBanner()" aria-label="Ocultar aviso">×</button>
+      </div>
+
       <!-- Sección de progreso (dentro de main-wrap, encima del content-area) -->
       <div id="progress-section" class="progress-section hidden">
         <div class="progress-card">

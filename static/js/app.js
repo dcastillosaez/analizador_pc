@@ -188,7 +188,7 @@ async function _triggerModuleScan(id) {
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`;
   }
   try {
-    const data = await fetchModule(id);
+    const data = await fetchModule(id, { fresh: true });
     if (typeof renderCard === 'function') renderCard(id, data);
     if (typeof scanResults !== 'undefined') scanResults[id] = data;
     calculateScore();
@@ -324,6 +324,23 @@ const MODULE_CMDS = {
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
+// Modulos simultaneos durante el escaneo global. Varios tardan segundos
+// esperando a WMI, winget o la red; en serie el escaneo completo se va a
+// minutos. Con 4 en vuelo el cuello de botella pasa a ser el modulo mas lento.
+const SCAN_CONCURRENCY = 4;
+
+/** Ejecuta `worker` sobre cada elemento con como mucho `limit` en vuelo. */
+async function runPool(items, limit, worker) {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      await worker(items[i], i);
+    }
+  });
+  await Promise.all(lanes);
+}
+
 async function startScan() {
   if (scanning) return;
   scanning = true;
@@ -333,12 +350,15 @@ async function startScan() {
   showProgress(true);
   hideSummary();
   clearTerminal();
+  resetSteps();
 
   termLog('info', '=== PC Guardian — análisis iniciado ===');
 
-  for (let i = 0; i < MODULES.length; i++) {
-    const mod = MODULES[i];
-    setProgress(mod.label, Math.round((i / MODULES.length) * 100));
+  let done = 0;
+  const total = MODULES.length;
+
+  await runPool(MODULES, SCAN_CONCURRENCY, async (mod) => {
+    setProgress(mod.label, Math.round((done / total) * 100));
     setStepState(mod.step, 'active');
 
     const t0 = performance.now();
@@ -346,7 +366,7 @@ async function startScan() {
     cmds.forEach(c => termLog('cmd', `> ${c}`));
 
     try {
-      const data = await fetchModule(mod.id);
+      const data = await fetchModule(mod.id, { fresh: true });
       const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
       scanResults[mod.id] = data;
       renderCard(mod.id, data);
@@ -361,8 +381,9 @@ async function startScan() {
       termLog('error', `✗ Error en ${mod.id} (${elapsed}s): ${err.message}`);
     }
 
-    setProgress(null, Math.round(((i + 1) / MODULES.length) * 100));
-  }
+    done++;
+    setProgress(null, Math.round((done / total) * 100));
+  });
 
   termLog('info', '=== Análisis completado ===');
   setScanningUI(false);
@@ -370,14 +391,20 @@ async function startScan() {
   renderSummary();
   updateLastScan();
   calculateScore();
+  if (typeof saveScanToHistory === 'function') saveScanToHistory();
   scanning = false;
 }
 
 /* ── Fetch ───────────────────────────────────────────────────────────────── */
-async function fetchModule(id) {
-  const res = await fetch(`/api/scan/${id}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+// fresh:true salta la cache del servidor. Se usa en las acciones explicitas
+// del usuario (escaneo global, boton "Analizar modulo"); la navegacion normal
+// reutiliza el resultado reciente en lugar de repetir consultas caras a WMI.
+async function fetchModule(id, { fresh = false } = {}) {
+  const res = await fetch(`/api/scan/${id}${fresh ? '?fresh=1' : ''}`);
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* respuesta no JSON */ }
+  if (!res.ok) throw new Error((data && data.message) || `HTTP ${res.status}`);
+  return data;
 }
 
 /* ── Render de tarjeta ───────────────────────────────────────────────────── */
@@ -666,7 +693,7 @@ async function scanUpdates() {
     </div>`;
 
   try {
-    const data = await fetchModule('updates');
+    const data = await fetchModule('updates', { fresh: true });
     renderUpdates(data, body, badge);
   } catch (e) {
     body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>No se pudo conectar con el servidor.</p></div>`;
@@ -1440,7 +1467,7 @@ async function scanCerts() {
   if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`; }
   if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🏅</span><p>Revisando certificados…</p></div>`;
   try {
-    const data = await fetchModule('certs');
+    const data = await fetchModule('certs', { fresh: true });
     renderCard('certs', data);
     scanResults['certs'] = data;
     updateNavDot('certs', data.status);
@@ -1620,7 +1647,7 @@ async function scanWifi() {
   if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">📶</span><p>Escaneando redes WiFi cercanas…</p></div>`;
 
   try {
-    const data = await fetchModule('wifi');
+    const data = await fetchModule('wifi', { fresh: true });
     renderCard('wifi', data);
     scanResults['wifi'] = data;
     updateNavDot('wifi', data.status);
@@ -1756,7 +1783,7 @@ async function checkWindowsUpdates() {
   }
 
   try {
-    const data = await fetchModule('wupdates');
+    const data = await fetchModule('wupdates', { fresh: true });
     renderCard('wupdates', data);
     scanResults['wupdates'] = data;
     updateNavDot('wupdates', data.status);
@@ -1841,3 +1868,49 @@ function renderInventory(data) {
 
   return `<div class="card-summary">${escHtml(data.summary || '')}</div>${sections}`;
 }
+
+/* ── Privilegios de administrador ──────────────────────────────── */
+// Sin elevacion, media docena de modulos devuelven datos parciales y el usuario
+// lo descubria modulo a modulo. Se avisa una sola vez, arriba del todo.
+let isAdmin = null;
+
+async function checkAdmin() {
+  try {
+    const res = await fetch('/api/status/admin');
+    const data = await res.json();
+    isAdmin = !!data.admin;
+  } catch (e) {
+    isAdmin = true;   // ante la duda no molestamos con el aviso
+  }
+  const banner = _id('admin-banner');
+  if (!banner) return;
+  const dismissed = localStorage.getItem('pcg-admin-banner-dismissed') === '1';
+  banner.classList.toggle('hidden', isAdmin || dismissed);
+}
+
+function dismissAdminBanner() {
+  localStorage.setItem('pcg-admin-banner-dismissed', '1');
+  const banner = _id('admin-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
+async function elevateApp() {
+  if (!confirm('Se cerrara PC Guardian y se volvera a abrir pidiendo permisos de administrador.\n\n¿Continuar?')) return;
+  try {
+    const res = await fetch('/api/admin/elevate', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      document.body.innerHTML =
+        '<div style="display:flex;height:100vh;align-items:center;justify-content:center;' +
+        'font-family:Segoe UI,sans-serif;color:#9aa0ab;text-align:center;padding:24px">' +
+        'Reiniciando con permisos de administrador\u2026<br><small>Acepta el aviso de Windows. ' +
+        'Puedes cerrar esta pesta\u00f1a.</small></div>';
+    } else {
+      alert(data.message || 'No se pudo reiniciar con permisos de administrador.');
+    }
+  } catch (e) {
+    alert('No se pudo contactar con la aplicacion: ' + e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', checkAdmin);
