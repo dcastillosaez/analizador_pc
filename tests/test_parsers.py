@@ -350,3 +350,76 @@ class TestProcesos:
     ])
     def test_clasificacion_por_consumo(self, cpu, ram, esperado):
         assert processes._classify(cpu, ram) == esperado
+
+
+# ── Firmas y protecciones de plataforma ───────────────────────────────────────
+
+from analyzer import hardening, signatures  # noqa: E402
+
+
+class TestFirmas:
+    def test_extrae_el_editor_del_certificado(self):
+        subject = "CN=Microsoft Windows, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+        assert signatures._common_name(subject) == "Microsoft Windows"
+
+    def test_subject_sin_cn(self):
+        assert signatures._common_name("O=Contoso, C=ES") == "O=Contoso, C=ES"
+
+    def test_las_rutas_con_comilla_se_escapan(self):
+        # Una comilla simple sin escapar rompería el array de PowerShell.
+        script = signatures._script([r"C:\o'brien\app.exe"])
+        assert "o''brien" in script
+
+    @pytest.mark.parametrize("estado,fragmento", [
+        ("Valid", "Firmado por"),
+        ("NotSigned", "No tiene firma"),
+        ("HashMismatch", "modificado"),
+    ])
+    def test_mensajes_legibles(self, estado, fragmento):
+        texto = signatures.describe({"status": estado, "signer": "Acme SL"})
+        assert fragmento in texto
+
+    def test_sin_informacion(self):
+        assert "No se pudo" in signatures.describe({})
+
+
+class TestProteccionesDePlataforma:
+    def test_secure_boot_desactivado_es_aviso(self):
+        assert hardening._check_secure_boot({"SecureBoot": False})["status"] == "warning"
+
+    def test_secure_boot_activo(self):
+        assert hardening._check_secure_boot({"SecureBoot": True})["status"] == "ok"
+
+    def test_secure_boot_no_consultable_no_es_error(self):
+        # En equipos con BIOS heredada la consulta simplemente no responde.
+        assert hardening._check_secure_boot({"SecureBoot": None})["status"] == "warning"
+
+    def test_disco_sin_cifrar(self):
+        r = hardening._check_bitlocker({"BitLockerStatus": "Off", "BitLockerMount": "C:"})
+        assert r["status"] == "warning" and "no está cifrada" in r["message"]
+
+    def test_disco_cifrado(self):
+        r = hardening._check_bitlocker({"BitLockerStatus": "On", "BitLockerMount": "C:", "BitLockerPct": 100})
+        assert r["status"] == "ok" and r["value"] == "Cifrado 100%"
+
+    def test_defender_apagado_es_critico(self):
+        items = hardening._check_defender({"RealTimeProtection": False})
+        assert items[0]["status"] == "danger"
+
+    @pytest.mark.parametrize("cfa,esperado", [(1, "ok"), (2, "warning"), (0, "warning")])
+    def test_proteccion_contra_ransomware(self, cfa, esperado):
+        items = hardening._check_defender({"RealTimeProtection": True, "ControlledFolderAccess": cfa})
+        ransomware = next(i for i in items if "ransomware" in i["name"])
+        assert ransomware["status"] == esperado
+
+    def test_definiciones_antiguas(self):
+        items = hardening._check_defender({"RealTimeProtection": True, "AntivirusSignatureAge": 30})
+        defs = next(i for i in items if "Definiciones" in i["name"])
+        assert defs["status"] == "warning" and "30 días" in defs["message"]
+
+    def test_tpm_ausente(self):
+        assert hardening._check_tpm({"TpmPresent": False})["value"] == "Ausente"
+
+    def test_tpm_presente_sin_inicializar(self):
+        r = hardening._check_tpm({"TpmPresent": True, "TpmReady": False})
+        assert r["status"] == "warning" and r["value"] == "Sin inicializar"

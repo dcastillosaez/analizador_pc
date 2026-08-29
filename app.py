@@ -27,6 +27,7 @@ from analyzer.certs         import analyze_certs, delete_cert
 from analyzer.services      import analyze_services
 from analyzer.processes     import analyze_processes, kill_process
 from analyzer.connections   import analyze_connections
+from analyzer.hardening     import analyze_hardening
 from analyzer import history
 
 if getattr(sys, "frozen", False):
@@ -63,6 +64,7 @@ SCANNERS = {
     "services":     analyze_services,
     "processes":    analyze_processes,
     "connections":  analyze_connections,
+    "hardening":    analyze_hardening,
 }
 
 # Segundos que un resultado sigue considerándose válido. Evita relanzar consultas

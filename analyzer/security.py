@@ -1,6 +1,7 @@
 import psutil
 
 from ._text import looks_random, shannon_entropy
+from .signatures import check_signatures, describe
 
 # Número esperado de instancias (min, max)
 CRITICAL_PROCS = {
@@ -39,13 +40,16 @@ _looks_random = looks_random
 def analyze_security() -> dict:
     threats = []
     proc_counts: dict[str, int] = {}
+    candidatos: list[dict] = []   # procesos fuera de rutas de sistema
+    rutas_a_firmar: list[str] = []
 
     for proc in psutil.process_iter(["pid", "name", "exe"]):
         try:
             info = proc.info
             raw_name = info.get("name") or ""
             name_lo = raw_name.lower()
-            exe = (info.get("exe") or "").lower().replace("/", "\\")
+            exe_raw = info.get("exe") or ""
+            exe = exe_raw.lower().replace("/", "\\")
             pid = info.get("pid")
 
             if not name_lo:
@@ -53,44 +57,79 @@ def analyze_security() -> dict:
 
             proc_counts[name_lo] = proc_counts.get(name_lo, 0) + 1
 
-            # ── Ruta sospechosa ──────────────────────────────────────────────
-            if exe:
-                is_safe = any(exe.startswith(p) for p in SAFE_PREFIXES)
-                if not is_safe:
-                    for kw in SUSPICIOUS_PATHS:
-                        if kw in exe:
-                            threats.append(
-                                {
-                                    "name": raw_name,
-                                    "status": "danger",
-                                    "message": (
-                                        f"Se detectó '{raw_name}' ejecutándose desde una "
-                                        "carpeta temporal sospechosa. Las amenazas se ocultan "
-                                        "habitualmente en estas rutas."
-                                    ),
-                                    "value": "Ruta peligrosa",
-                                    "detail": f"PID {pid} · {exe[:90]}",
-                                }
-                            )
-                            break
+            fuera_de_sistema = exe and not any(exe.startswith(p) for p in SAFE_PREFIXES)
+            ruta_insegura = fuera_de_sistema and any(kw in exe for kw in SUSPICIOUS_PATHS)
+            nombre_raro = name_lo not in CRITICAL_PROCS and _looks_random(raw_name)
 
-            # ── Nombre de aspecto aleatorio ──────────────────────────────────
-            if name_lo not in CRITICAL_PROCS and _looks_random(raw_name):
-                threats.append(
-                    {
-                        "name": raw_name,
-                        "status": "warning",
-                        "message": (
-                            f"El proceso '{raw_name}' tiene un nombre de aspecto aleatorio, "
-                            "táctica habitual del malware para pasar desapercibido."
-                        ),
-                        "value": "Nombre sospechoso",
-                        "detail": f"PID {pid} · {exe[:90] if exe else 'ruta desconocida'}",
-                    }
-                )
+            if ruta_insegura or nombre_raro:
+                candidatos.append({
+                    "name": raw_name, "pid": pid, "exe": exe, "exe_raw": exe_raw,
+                    "ruta_insegura": ruta_insegura, "nombre_raro": nombre_raro,
+                })
+                # Solo se pide la firma de lo que ya resulta llamativo: pedirla
+                # para los cien y pico procesos de un equipo normal añadía diez
+                # segundos al escaneo sin cambiar ningún veredicto.
+                if exe_raw:
+                    rutas_a_firmar.append(exe_raw)
 
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+
+    # ── Firma digital ────────────────────────────────────────────────────────
+    # Se consulta de golpe para todos los candidatos: es la señal que decide si
+    # un binario en una ruta rara es un instalador normal o algo que esconderse.
+    firmas = check_signatures(rutas_a_firmar) if rutas_a_firmar else {}
+
+    for c in candidatos:
+        firma = firmas.get(c["exe"], {})
+        firmado = firma.get("signed", False)
+        firmante = firma.get("signer", "")
+        detalle_firma = describe(firma) if firma else ""
+        detalle = f"PID {c['pid']} · {c['exe'][:90] if c['exe'] else 'ruta desconocida'}"
+        if detalle_firma:
+            detalle += f" · {detalle_firma}"
+
+        # Un archivo cuya firma no cuadra con su contenido ha sido manipulado
+        # después de firmarse. Eso no admite interpretación benigna.
+        if firma.get("status") == "HashMismatch":
+            threats.append({
+                "name": c["name"], "status": "danger",
+                "message": (f"El ejecutable de '{c['name']}' ha sido modificado después de "
+                            "firmarse: su firma digital ya no coincide con el archivo."),
+                "value": "Firma rota", "detail": detalle,
+            })
+            continue
+
+        if c["ruta_insegura"]:
+            if firmado:
+                # Los instaladores se descomprimen en Temp y se ejecutan desde
+                # ahí: con firma válida es lo normal, no una amenaza.
+                threats.append({
+                    "name": c["name"], "status": "warning",
+                    "message": (f"'{c['name']}' se ejecuta desde una carpeta temporal, aunque "
+                                f"está firmado por {firmante or 'un editor conocido'}. "
+                                "Es lo habitual en instaladores."),
+                    "value": "Temporal, firmado", "detail": detalle,
+                })
+            else:
+                threats.append({
+                    "name": c["name"], "status": "danger",
+                    "message": (f"Se detectó '{c['name']}' ejecutándose desde una carpeta "
+                                "temporal y sin firma digital. Es la combinación típica "
+                                "de un archivo malicioso."),
+                    "value": "Ruta peligrosa", "detail": detalle,
+                })
+            continue
+
+        if c["nombre_raro"]:
+            if firmado:
+                continue   # nombre generado pero binario firmado: no es señal
+            threats.append({
+                "name": c["name"], "status": "warning",
+                "message": (f"El proceso '{c['name']}' tiene un nombre de aspecto aleatorio y "
+                            "no está firmado digitalmente, táctica habitual del malware."),
+                "value": "Nombre sospechoso", "detail": detalle,
+            })
 
     # ── Duplicados de procesos críticos ──────────────────────────────────────
     for proc_name, (mn, mx) in CRITICAL_PROCS.items():
@@ -105,7 +144,7 @@ def analyze_security() -> dict:
                         f"entre {mn} y {mx}. Esto puede indicar una suplantación de proceso crítico."
                     ),
                     "value": f"{count} instancias",
-                    "detail": f"Proceso crítico del sistema con instancias inesperadas",
+                    "detail": "Proceso crítico del sistema con instancias inesperadas",
                 }
             )
 

@@ -149,6 +149,17 @@
         </div>
 
         <!-- Grupo: Red -->
+        <div class="nav-item" id="nav-item-hardening" onclick="navigateTo('hardening')" tabindex="0" title="Protecciones del sistema" role="button" aria-label="Protecciones del sistema">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Protecciones</span>
+          <span class="nav-dot dot-pending" id="nav-dot-hardening"></span>
+        </div>
+
         <div class="nav-group-label">Red</div>
 
         <div class="nav-item" id="nav-item-network" onclick="navigateTo('network')" tabindex="0" title="Red" role="button" aria-label="Red">
@@ -464,6 +475,10 @@
               <div class="pstep" id="pstep-services">
                 <div class="pstep-dot"></div><span>Servicios</span>
                 <span class="pstep-time" id="ptime-services"></span>
+              </div>
+              <div class="pstep" id="pstep-hardening">
+                <div class="pstep-dot"></div><span>Protecciones</span>
+                <span class="pstep-time" id="ptime-hardening"></span>
               </div>
               <div class="pstep" id="pstep-connections">
                 <div class="pstep-dot"></div><span>Conexiones</span>
@@ -832,6 +847,26 @@
       </div>
       <div class="card-body" id="body-services">
         <div class="empty-state"><span class="empty-emoji">⚙️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Protecciones del sistema -->
+    <div class="card" id="card-hardening">
+      <div class="card-header">
+        <div class="card-icon-wrap c-hardening">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Protecciones del sistema</h2>
+          <p>BitLocker, arranque seguro, TPM, ransomware, UAC y SmartScreen</p>
+        </div>
+        <div class="card-badge" id="badge-hardening"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-hardening">
+        <div class="empty-state"><span class="empty-emoji">🔐</span><p>Pendiente de análisis</p></div>
       </div>
     </div>
 

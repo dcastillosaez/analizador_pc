@@ -26,10 +26,11 @@ const MODULE_META = {
   certs:        { label: 'Certificados',   group: 'Red',           emoji: '🏅', color: '#fdcb6e' },
   processes:    { label: 'Procesos',        group: 'Rendimiento',   emoji: '🖥️', color: '#00b894' },
   connections:  { label: 'Conexiones',      group: 'Red',           emoji: '🔗', color: '#0984e3' },
+  hardening:    { label: 'Protecciones',    group: 'Seguridad',     emoji: '🔐', color: '#fd79a8' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
-const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','connections'];
+const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','connections','hardening'];
 
 // Estado de navegación
 let activeView = 'overview';
@@ -310,6 +311,7 @@ const MODULES = [
   { id: 'privacy',      label: 'Auditando privacidad y archivos temporales…', step: 'pstep-privacy'      },
   { id: 'services',     label: 'Inspeccionando servicios de Windows…',       step: 'pstep-services'     },
   { id: 'connections',  label: 'Revisando conexiones salientes activas…',    step: 'pstep-connections'  },
+  { id: 'hardening',    label: 'Comprobando protecciones de Windows…',       step: 'pstep-hardening'    },
 ];
 
 let scanResults = {};
@@ -319,7 +321,7 @@ let scanning    = false;
 const MODULE_CMDS = {
   hardware:    ['psutil.cpu_percent(interval=1)', 'psutil.virtual_memory()', 'psutil.disk_usage("C:\\\\")'],
   startup:     ['winreg HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run', 'winreg HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'],
-  security:    ['psutil.process_iter(["pid","name","exe"])', 'entropy_check(process_names)', 'critical_process_count()'],
+  security:    ['psutil.process_iter(["pid","name","exe"])', 'entropy_check(process_names)', 'powershell Get-AuthenticodeSignature', 'critical_process_count()'],
   drivers:     ['powershell Get-WmiObject Win32_PnPSignedDriver', 'winreg HKLM:\\Software\\...\\Uninstall\\*'],
   protection:  ['powershell Get-CimInstance AntiVirusProduct', 'powershell Get-NetFirewallProfile'],
   network:     ['psutil.net_connections(kind="inet")', 'open("C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts")'],
@@ -329,6 +331,7 @@ const MODULE_CMDS = {
   energy:       ['powercfg /getactivescheme', 'psutil.sensors_battery()', 'wmi.WMI(namespace="root\\\\OpenHardwareMonitor").Sensor()'],
   processes:    ['psutil.process_iter(["pid","name"])', 'proc.cpu_percent(interval=0.6)', 'proc.memory_info().rss'],
   connections:  ['psutil.net_connections(kind="tcp")', 'socket.gethostbyaddr(remote_ip)'],
+  hardening:    ['powershell Confirm-SecureBootUEFI', 'powershell Get-BitLockerVolume', 'powershell Get-MpComputerStatus', 'winreg HKLM\\...\\Policies\\System EnableLUA'],
   privacy:      ['winreg HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection', 'winreg HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore', 'Get-WinEvent -FilterHashtable @{LogName="System";Level=1,2}'],
 };
 

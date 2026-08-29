@@ -1942,3 +1942,5 @@ body {
 
 .card-icon-wrap.c-processes { background: linear-gradient(135deg, rgba(0,184,148,.18), rgba(0,184,148,.05)); color: #00b894; }
 .card-icon-wrap.c-connections { background: linear-gradient(135deg, rgba(9,132,227,.18), rgba(9,132,227,.05)); color: #0984e3; }
+
+.card-icon-wrap.c-hardening { background: linear-gradient(135deg, rgba(253,121,168,.18), rgba(253,121,168,.05)); color: #fd79a8; }
