@@ -423,3 +423,43 @@ class TestProteccionesDePlataforma:
     def test_tpm_presente_sin_inicializar(self):
         r = hardening._check_tpm({"TpmPresent": True, "TpmReady": False})
         assert r["status"] == "warning" and r["value"] == "Sin inicializar"
+
+
+# ── Puntos de restauración ────────────────────────────────────────────────────
+
+from analyzer import restore  # noqa: E402
+
+
+class TestPuntosDeRestauracion:
+    def test_la_descripcion_no_puede_romper_el_script(self):
+        # Va dentro de comillas simples de PowerShell.
+        assert "'" not in restore._clean("un 'punto' raro")
+
+    def test_la_descripcion_se_recorta(self):
+        assert len(restore._clean("x" * 500)) == 200
+
+    def test_descripcion_vacia_tiene_respaldo(self):
+        assert restore._clean("") == "Punto de PC Guardian"
+
+    def test_sin_saltos_de_linea(self):
+        limpio = restore._clean("linea1\nlinea2\rlinea3")
+        assert "\n" not in limpio and "\r" not in limpio
+
+    def test_falta_de_permisos_se_reconoce(self, monkeypatch):
+        from analyzer import _shell
+        monkeypatch.setattr(restore, "run_ps",
+                            lambda *a, **k: _shell.ShellResult(returncode=1, stdout="ERR=Access is denied"))
+        res = restore.create_restore_point("prueba")
+        assert res["success"] is False and "administrador" in res["message"]
+
+    def test_proteccion_desactivada_se_reconoce(self, monkeypatch):
+        from analyzer import _shell
+        monkeypatch.setattr(restore, "run_ps",
+                            lambda *a, **k: _shell.ShellResult(returncode=1, stdout="ERR=System Restore is disabled"))
+        res = restore.create_restore_point("prueba")
+        assert "protección del sistema está desactivada" in res["message"]
+
+    def test_creacion_correcta(self, monkeypatch):
+        from analyzer import _shell
+        monkeypatch.setattr(restore, "run_ps", lambda *a, **k: _shell.ShellResult(returncode=0, stdout="OK"))
+        assert restore.create_restore_point("prueba")["success"] is True

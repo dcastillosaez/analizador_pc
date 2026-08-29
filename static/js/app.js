@@ -816,8 +816,39 @@ async function doDriverUpdate(deviceId, idx) {
   }
 }
 
+/* ── Punto de restauración antes de un cambio irreversible ────────────────── */
+// Desinstalar un controlador, instalar una actualización o borrar un
+// certificado son cambios que cuesta deshacer. Se ofrece la red de seguridad
+// que Windows ya trae, en vez de dar por hecho que saldrá bien.
+function pedirPuntoDeRestauracion(accion) {
+  return confirm(
+    `¿Crear un punto de restauración antes de ${accion}?
+
+` +
+    `Tarda entre 30 segundos y un par de minutos, y permite deshacer el cambio ` +
+    `desde Windows si algo va mal.
+
+` +
+    `Aceptar = crear el punto primero · Cancelar = continuar sin él.`
+  );
+}
+
+// Añade al mensaje de resultado lo que pasó con el punto de restauración.
+function _avisoRestauracion(data) {
+  if (!data || !data.restore) return '';
+  return data.restore.success
+    ? `
+
+Punto de restauración creado antes del cambio.`
+    : `
+
+No se creó el punto de restauración: ${data.restore.message}`;
+}
+
 async function doDriverUninstall(deviceId, deviceName, idx) {
   if (!confirm(`¿Desinstalar el dispositivo "${deviceName}"?\n\nEl controlador se eliminará del árbol de dispositivos. Si Windows lo redetecta al reiniciar, puede volver a instalarse automáticamente.\n\nEsta acción requiere permisos de administrador.`)) return;
+
+  const conPunto = pedirPuntoDeRestauracion('desinstalar el controlador');
 
   const btn = document.getElementById(`drvunin-${idx}`);
   if (!btn) return;
@@ -829,7 +860,7 @@ async function doDriverUninstall(deviceId, deviceName, idx) {
     const res = await fetch('/api/driver/uninstall', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId }),
+      body: JSON.stringify({ device_id: deviceId, restore_point: conPunto }),
     });
     const data = await res.json();
     if (data.success) {
@@ -837,7 +868,7 @@ async function doDriverUninstall(deviceId, deviceName, idx) {
       btn.textContent = '✓ Desinstalado';
       const row = document.getElementById(`drv-row-${idx}`);
       if (row) row.style.opacity = '0.4';
-      alert(data.message);
+      alert(data.message + _avisoRestauracion(data));
     } else {
       btn.className = 'btn-drv btn-drv-uninstall error';
       btn.textContent = '✗ Error';
@@ -1460,18 +1491,21 @@ function renderCerts(data) {
 
 async function doDeleteCert(storePath, thumbprint, idx) {
   if (!confirm('¿Eliminar este certificado caducado?\n\nEsta acción es irreversible y requiere permisos de administrador.')) return;
+  const conPunto = pedirPuntoDeRestauracion('eliminar el certificado');
   const btn = document.getElementById(`certdel-${idx}`);
   if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
   try {
-    const res  = await fetch('/api/cert/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({store_path: storePath, thumbprint}) });
+    const res  = await fetch('/api/cert/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({store_path: storePath, thumbprint, restore_point: conPunto}) });
     const data = await res.json();
     if (data.success) {
       const row = document.getElementById(`cert-row-${idx}`);
       if (row) row.style.opacity = '0.35';
       if (btn) { btn.textContent = '✓ Eliminado'; btn.style.color = 'var(--success)'; }
+      const aviso = _avisoRestauracion(data);
+      if (aviso) alert('Certificado eliminado.' + aviso);
     } else {
       if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; btn.title = data.message; }
-      alert('No se pudo eliminar:\n\n' + data.message);
+      alert('No se pudo eliminar: ' + data.message + _avisoRestauracion(data));
     }
   } catch(e) {
     if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; }
@@ -1746,17 +1780,25 @@ async function doWindowsUpdate(updateId, idx) {
 
   if (!confirm('¿Instalar esta actualización de Windows ahora?\n\nEl proceso puede tardar varios minutos. Es posible que se requiera reiniciar el equipo al finalizar.')) return;
 
+  const conPunto = pedirPuntoDeRestauracion('instalar la actualización');
+
   btn.disabled = true;
   btn.className = 'btn-wupdate updating';
   btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Instalando…`;
 
   try {
-    const res = await fetch(`/api/wupdate/apply/${encodeURIComponent(updateId)}`, { method: 'POST' });
+    const res = await fetch(`/api/wupdate/apply/${encodeURIComponent(updateId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restore_point: conPunto }),
+    });
     const data = await res.json();
 
     if (data.success) {
       btn.className = 'btn-wupdate done';
       btn.textContent = '✓ Instalada';
+      const avisoWU = _avisoRestauracion(data);
+      if (avisoWU) alert('Actualización instalada.' + avisoWU);
       const row = document.getElementById(`wupdate-row-${idx}`);
       if (row) row.style.opacity = '0.5';
       if (data.reboot_required) {

@@ -12,6 +12,7 @@ cada arranque del shell cuesta cerca de medio segundo.
 import winreg
 
 from ._shell import run_ps_json
+from .restore import restore_status
 
 _PS = r"""
 $out = @{}
@@ -227,6 +228,26 @@ def _check_smartscreen() -> dict:
                  str(valor))
 
 
+def _check_restore() -> dict:
+    """La red de seguridad para deshacer un cambio que salió mal."""
+    estado = restore_status()
+    if estado.get("enabled") and estado.get("last_creation"):
+        return _item("Restaurar sistema", "ok",
+                     "La protección del sistema está activa y hay puntos de restauración guardados.",
+                     "Con puntos",
+                     f"Último: {estado.get('last_description') or 'sin descripción'}")
+    if estado.get("enabled"):
+        return _item("Restaurar sistema", "warning",
+                     "La protección está activa pero no hay ningún punto de restauración guardado: "
+                     "no habría a dónde volver si un cambio sale mal.",
+                     "Sin puntos")
+    return _item("Restaurar sistema", "warning",
+                 "No se detectan puntos de restauración. Si la protección del sistema está "
+                 "desactivada, no hay forma de deshacer un cambio que rompa el equipo.",
+                 "Desconocido",
+                 "Propiedades del sistema › Protección del sistema.")
+
+
 def analyze_hardening() -> dict:
     datos = run_ps_json(_PS, timeout=45, default={}) or {}
     if isinstance(datos, list):
@@ -239,6 +260,7 @@ def analyze_hardening() -> dict:
         *_check_defender(datos),
         _check_uac(),
         _check_smartscreen(),
+        _check_restore(),
     ]
 
     peligros = sum(1 for i in items if i["status"] == "danger")

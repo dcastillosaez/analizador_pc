@@ -28,6 +28,7 @@ from analyzer.services      import analyze_services
 from analyzer.processes     import analyze_processes, kill_process
 from analyzer.connections   import analyze_connections
 from analyzer.hardening     import analyze_hardening
+from analyzer.restore       import create_restore_point, restore_status
 from analyzer import history
 
 if getattr(sys, "frozen", False):
@@ -204,6 +205,31 @@ def connectivity_speedtest():
 
 
 # ── Operaciones de escritura ──────────────────────────────────────────────────
+def _con_punto_de_restauracion(descripcion: str):
+    """Crea un punto de restauración si el cliente lo pidió, sin bloquear nada.
+
+    Desinstalar un controlador o instalar una actualización son cambios que
+    cuesta deshacer. Si la protección del sistema está apagada o falta
+    elevación, se sigue adelante y se informa en la respuesta.
+    """
+    body = request.get_json(silent=True) or {}
+    if not body.get("restore_point"):
+        return None
+    return create_restore_point(descripcion)
+
+
+@app.route("/api/restore/status")
+def restore_status_route():
+    return jsonify(restore_status())
+
+
+@app.route("/api/restore/create", methods=["POST"])
+def restore_create_route():
+    body = request.get_json(silent=True) or {}
+    return jsonify(create_restore_point(body.get("description") or "PC Guardian - punto manual"))
+
+
+
 @app.route("/api/driver/update", methods=["POST"])
 def do_driver_update():
     body = request.get_json(silent=True) or {}
@@ -215,7 +241,9 @@ def do_driver_update():
 @app.route("/api/driver/uninstall", methods=["POST"])
 def do_driver_uninstall():
     body = request.get_json(silent=True) or {}
+    restore = _con_punto_de_restauracion("PC Guardian - antes de desinstalar un controlador")
     result = uninstall_driver(body.get("device_id", ""))
+    result["restore"] = restore
     invalidate_cache("drivers")
     return jsonify(result)
 
@@ -223,7 +251,9 @@ def do_driver_uninstall():
 @app.route("/api/cert/delete", methods=["POST"])
 def do_cert_delete():
     body = request.get_json(silent=True) or {}
+    restore = _con_punto_de_restauracion("PC Guardian - antes de eliminar un certificado")
     result = delete_cert(body.get("store_path", ""), body.get("thumbprint", ""))
+    result["restore"] = restore
     invalidate_cache("certs")
     return jsonify(result)
 
@@ -237,7 +267,9 @@ def privacy_clean_temp():
 
 @app.route("/api/wupdate/apply/<path:update_id>", methods=["POST"])
 def do_windows_update(update_id):
+    restore = _con_punto_de_restauracion("PC Guardian - antes de instalar una actualizacion")
     result = apply_windows_update(update_id)
+    result["restore"] = restore
     invalidate_cache("wupdates")
     return jsonify(result)
 
