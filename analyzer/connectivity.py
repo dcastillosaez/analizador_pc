@@ -3,12 +3,13 @@ Conectividad — estado de internet, latencia y test de velocidad de descarga.
 El análisis básico (ping + DNS + gateway) se ejecuta con el escaneo general.
 El test de velocidad es bajo demanda (/api/connectivity/speedtest).
 """
-import subprocess
 import socket
 import time
 import urllib.request
 import re
 import psutil
+
+from ._shell import run, run_ps_json
 
 
 # ── Utilidades ────────────────────────────────────────────────────────────────
@@ -16,11 +17,7 @@ import psutil
 def _ping_ms(host: str, count: int = 4) -> float | None:
     """Devuelve latencia media en ms, o None si falla."""
     try:
-        r = subprocess.run(
-            ["ping", "-n", str(count), host],
-            capture_output=True, timeout=15,
-        )
-        text = r.stdout.decode("oem", errors="ignore")
+        text = run(["ping", "-n", str(count), host], timeout=15).stdout
         m = re.search(r"[Mm]edia\s*=\s*(\d+)\s*ms|[Aa]verage\s*=\s*(\d+)\s*ms", text)
         if m:
             return float(m.group(1) or m.group(2))
@@ -47,11 +44,7 @@ def _default_gateway() -> str | None:
     try:
         gws = psutil.net_if_stats()
         # Obtener gateway del sistema via route
-        r = subprocess.run(
-            ["route", "print", "0.0.0.0"],
-            capture_output=True, timeout=8,
-        )
-        text = r.stdout.decode("oem", errors="ignore")
+        text = run(["route", "print", "0.0.0.0"], timeout=8).stdout
         m = re.search(r"0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)", text)
         if m:
             return m.group(1)
@@ -170,22 +163,13 @@ def analyze_connectivity() -> dict:
 def _get_system_dns() -> list[dict]:
     """Devuelve las DNS activas configuradas en las interfaces de red."""
     try:
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-             "Get-DnsClientServerAddress -AddressFamily IPv4 | "
-             "Where-Object {$_.ServerAddresses} | "
-             "Select-Object InterfaceAlias, ServerAddresses | "
-             "ConvertTo-Json -Compress -Depth 2"],
-            capture_output=True, text=True, timeout=15,
-            encoding="utf-8", errors="ignore",
-        )
-        import json
-        raw = (r.stdout or "").strip()
-        if not raw:
-            return []
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            data = [data]
+        data = run_ps_json(
+            "Get-DnsClientServerAddress -AddressFamily IPv4 | "
+            "Where-Object {$_.ServerAddresses} | "
+            "Select-Object InterfaceAlias, ServerAddresses | "
+            "ConvertTo-Json -Compress -Depth 2",
+            timeout=15, default=[],
+        ) or []
         results = []
         for entry in data:
             iface = entry.get("InterfaceAlias", "")

@@ -1,21 +1,12 @@
 import json
-import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from ._shell import run_ps_json
 
 
 def _ps(cmd: str):
     """Ejecuta un comando PowerShell y devuelve el resultado como JSON parseado."""
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-        capture_output=True, text=True, timeout=30
-    )
-    raw = result.stdout.strip()
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return None
+    return run_ps_json(cmd, timeout=30, default=None)
 
 
 def _query_baseboard():

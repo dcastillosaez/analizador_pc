@@ -1462,18 +1462,20 @@ function exportReport() {
 
   const sections = Object.entries(results).map(([id, data]) => {
     if (!data || !data.title) return '';
+    // Los datos vienen del sistema (nombres de proceso, rutas, claves de registro):
+    // pueden contener '<' o comillas, asi que se escapan igual que en la UI.
     const itemRows = (data.items || []).map(item => `
-      <tr class="s-${item.status}">
-        <td>${item.name || ''}</td>
-        <td>${STATUS_LABEL[item.status] || item.status}</td>
-        <td>${item.message || ''}</td>
-        <td>${item.value || ''}</td>
-        <td>${item.detail || ''}</td>
+      <tr class="s-${escHtml(item.status)}">
+        <td>${escHtml(item.name)}</td>
+        <td>${escHtml(STATUS_LABEL[item.status] || item.status)}</td>
+        <td>${escHtml(item.message)}</td>
+        <td>${escHtml(item.value)}</td>
+        <td>${escHtml(item.detail)}</td>
       </tr>`).join('');
     const table = itemRows ? `<table><thead><tr><th>Elemento</th><th>Estado</th><th>Mensaje</th><th>Valor</th><th>Detalle</th></tr></thead><tbody>${itemRows}</tbody></table>` : '';
     return `<section>
-      <h2><span class="badge-${data.status}">${STATUS_LABEL[data.status] || ''}</span> ${data.title}</h2>
-      <p class="summary">${data.summary || ''}</p>
+      <h2><span class="badge-${escHtml(data.status)}">${STATUS_LABEL[data.status] || ''}</span> ${escHtml(data.title)}</h2>
+      <p class="summary">${escHtml(data.summary)}</p>
       ${table}
     </section>`;
   }).join('');

@@ -1,7 +1,8 @@
-import subprocess
 import json
 import math
 import re
+
+from ._shell import run_ps_json
 
 SYSTEM_WHITELIST = {
     'AudioEndpointBuilder', 'Audiosrv', 'BFE', 'BrokerInfrastructure',
@@ -60,17 +61,7 @@ def analyze_services() -> dict:
         "ConvertTo-Json -Compress -Depth 2"
     )
     try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=30
-        )
-        raw = result.stdout.strip()
-        if not raw:
-            services_raw = []
-        else:
-            services_raw = json.loads(raw)
-            if isinstance(services_raw, dict):
-                services_raw = [services_raw]
+        services_raw = run_ps_json(cmd, timeout=30, default=[]) or []
     except Exception as exc:
         return {
             "status": "warning",

@@ -2,24 +2,13 @@
 Analizador WiFi — redes cercanas, señal, canal, frecuencia y colisiones de canal.
 Usa netsh wlan (siempre disponible en Windows sin dependencias externas).
 """
-import subprocess
 import re
+
+from ._shell import run
 
 
 def _run_netsh(args: list[str]) -> str:
-    try:
-        r = subprocess.run(
-            ["netsh"] + args,
-            capture_output=True, timeout=20,
-        )
-        for enc in ("utf-8", "oem", "cp1252", "latin-1"):
-            try:
-                return r.stdout.decode(enc)
-            except (UnicodeDecodeError, LookupError):
-                continue
-        return r.stdout.decode("latin-1")
-    except Exception:
-        return ""
+    return run(["netsh"] + args, timeout=20).stdout
 
 
 def _field(text: str, *keys: str) -> str:

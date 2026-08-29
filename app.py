@@ -6,6 +6,8 @@ import webbrowser
 
 from flask import Flask, jsonify, render_template, request
 
+from analyzer._shell import is_admin
+
 from analyzer.hardware    import analyze_hardware
 from analyzer.startup     import analyze_startup
 from analyzer.security    import analyze_security
@@ -34,6 +36,45 @@ app = Flask(
     template_folder=os.path.join(_BASE, "templates"),
     static_folder=os.path.join(_BASE, "static"),
 )
+
+
+@app.errorhandler(Exception)
+def handle_any_error(exc):
+    """Cualquier excepcion no capturada sale como el esquema JSON estandar.
+
+    Sin esto un fallo en un analyzer devuelve una pagina HTML de error 500 y el
+    frontend rompe al parsear el JSON, mostrando "Unexpected token '<'".
+    """
+    code = getattr(exc, "code", 500)
+    if not isinstance(code, int):
+        code = 500
+
+    if request.path.startswith("/api/"):
+        if code >= 500:  # los 404/405 no son fallos que merezcan traza
+            app.logger.exception("Fallo en %s", request.path)
+        return jsonify({
+            "status": "danger",
+            "title": "Error interno",
+            "summary": f"El modulo fallo: {exc}",
+            "issue_count": 1,
+            "items": [{
+                "name": request.path,
+                "status": "danger",
+                "message": "El analisis no pudo completarse por un error interno.",
+                "value": type(exc).__name__,
+                "detail": str(exc)[:400],
+            }],
+            "success": False,
+            "message": str(exc)[:400],
+        }), code
+
+    return f"<h1>Error {code}</h1><p>{exc}</p>", code
+
+
+@app.route("/api/status/admin")
+def status_admin():
+    """Indica si la app corre elevada; el frontend avisa cuando no lo esta."""
+    return jsonify({"admin": is_admin()})
 
 
 @app.route("/")
@@ -145,12 +186,27 @@ def do_update(package_id):
     return jsonify(update_package(package_id))
 
 
+PORT = 47832
+HOST = "127.0.0.1"
+
+
 def _open_browser():
     time.sleep(1.4)
-    webbrowser.open("http://127.0.0.1:8765")
+    webbrowser.open(f"http://{HOST}:{PORT}")
+
+
+def _serve():
+    """Sirve la app. Prefiere waitress; cae al servidor de Flask si no esta."""
+    try:
+        from waitress import serve
+    except ImportError:
+        app.run(host=HOST, port=PORT, debug=False, use_reloader=False, threaded=True)
+        return
+    # threads=8: el escaneo lanza varios modulos en paralelo desde el navegador.
+    serve(app, host=HOST, port=PORT, threads=8, channel_timeout=900, ident="PC Guardian")
 
 
 if __name__ == "__main__":
     if sys.platform == "win32":
         threading.Thread(target=_open_browser, daemon=True).start()
-    app.run(debug=False, port=8765, use_reloader=False)
+    _serve()

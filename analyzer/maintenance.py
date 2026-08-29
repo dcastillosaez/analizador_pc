@@ -3,10 +3,11 @@ import csv
 import datetime
 import io
 import json
-import subprocess
 import threading
 
 import psutil
+
+from ._shell import run, run_ps
 
 
 _PS_DISKS = r"""
@@ -20,27 +21,11 @@ try {
 
 
 def _run_ps(script: str, timeout: int = 12) -> str:
-    try:
-        r = subprocess.run(
-            ["powershell", "-NonInteractive", "-NoProfile", "-Command", script],
-            capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="ignore",
-        )
-        return (r.stdout or "").strip()
-    except Exception:
-        return ""
+    return run_ps(script, timeout=timeout).stdout.strip()
 
 
 def _run_schtasks(timeout: int = 10) -> list[str]:
-    try:
-        r = subprocess.run(
-            ["schtasks", "/query", "/fo", "CSV", "/nh"],
-            capture_output=True, text=True, timeout=timeout,
-            encoding="utf-8", errors="ignore",
-        )
-        return r.stdout.splitlines() if r.stdout else []
-    except Exception:
-        return []
+    return run(["schtasks", "/query", "/fo", "CSV", "/nh"], timeout=timeout).stdout.splitlines()
 
 
 def _check_disks(raw: str) -> list[dict]:

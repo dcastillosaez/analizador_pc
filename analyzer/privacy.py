@@ -6,9 +6,10 @@ import os
 import re
 import time
 import datetime
-import subprocess
 import winreg
 from pathlib import Path
+
+from ._shell import run_ps_json
 
 
 # ── Telemetría ────────────────────────────────────────────────────────────────
@@ -178,25 +179,15 @@ def _check_events() -> list[dict]:
 
     # Errores críticos del Visor de eventos (últimas 72 h) — uno por evento
     try:
-        import json
-        r = subprocess.run(
-            [
-                "powershell", "-NoProfile", "-Command",
-                (
-                    "Get-WinEvent -FilterHashtable @{LogName='System';Level=1,2;"
-                    "StartTime=(Get-Date).AddHours(-72)} -MaxEvents 8 -ErrorAction SilentlyContinue"
-                    " | Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,"
-                    "@{n='Msg';e={$_.Message -replace '`n',' ' -replace '`r',' '}} "
-                    " | ConvertTo-Json -Compress -Depth 2"
-                ),
-            ],
-            capture_output=True, timeout=20,
+        events = run_ps_json(
+            "Get-WinEvent -FilterHashtable @{LogName='System';Level=1,2;"
+            "StartTime=(Get-Date).AddHours(-72)} -MaxEvents 8 -ErrorAction SilentlyContinue"
+            " | Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,"
+            "@{n='Msg';e={$_.Message -replace '`n',' ' -replace '`r',' '}} "
+            " | ConvertTo-Json -Compress -Depth 2",
+            timeout=20, default=[],
         )
-        raw = r.stdout.decode("utf-8", errors="ignore").strip()
-        if raw and raw != "null":
-            events = json.loads(raw)
-            if isinstance(events, dict):
-                events = [events]
+        if events:
 
             for ev in events:
                 provider = ev.get("ProviderName") or "Sistema"

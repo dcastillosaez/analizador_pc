@@ -1,5 +1,6 @@
 import json
-import subprocess
+
+from ._shell import run, run_ps_json
 
 # Mapeo de clase WMI → (etiqueta legible, categoría en Administrador de dispositivos)
 _CLASS_MAP: dict[str, tuple[str, str]] = {
@@ -61,22 +62,7 @@ try {
 
 
 def _run_ps(script: str) -> list:
-    try:
-        r = subprocess.run(
-            ["powershell", "-NonInteractive", "-NoProfile", "-Command", script],
-            capture_output=True,
-            text=True,
-            timeout=45,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        raw = (r.stdout or "").strip()
-        if not raw:
-            return []
-        data = json.loads(raw)
-        return data if isinstance(data, list) else [data]
-    except Exception:
-        return []
+    return run_ps_json(script, timeout=45, default=[]) or []
 
 
 def analyze_drivers() -> dict:
@@ -201,33 +187,24 @@ def update_driver(device_id: str) -> dict:
     if not clean:
         return {"success": False, "message": "ID de dispositivo no válido.", "output": ""}
 
-    try:
-        r = subprocess.run(
-            ["pnputil", "/scan-devices", "/instanceid", clean],
-            capture_output=True, text=True, timeout=120,
-            encoding="utf-8", errors="ignore",
-        )
-        out = ((r.stdout or "") + (r.stderr or "")).strip()
-        # pnputil devuelve 0 si todo va bien
-        if r.returncode == 0:
-            return {
-                "success": True,
-                "message": "Búsqueda de actualización completada. Si hay un controlador más reciente disponible, Windows lo instalará automáticamente.",
-                "output": out[-400:],
-            }
-        # Código 2 = no se encontró el dispositivo
-        if r.returncode == 2:
-            return {"success": False, "message": "Dispositivo no encontrado. Puede que ya no esté conectado.", "output": out[-400:]}
-        # Código 740 = se requieren privilegios de administrador
-        if r.returncode == 740 or "acceso" in out.lower() or "elevat" in out.lower():
-            return {"success": False, "message": "Se necesitan permisos de administrador. Reinicia PC Guardian como administrador.", "output": out[-400:]}
-        return {"success": False, "message": f"pnputil terminó con código {r.returncode}.", "output": out[-400:]}
-    except FileNotFoundError:
-        return {"success": False, "message": "pnputil no está disponible en este sistema.", "output": ""}
-    except subprocess.TimeoutExpired:
-        return {"success": False, "message": "La operación tardó demasiado y fue cancelada.", "output": ""}
-    except Exception as exc:
-        return {"success": False, "message": str(exc), "output": ""}
+    res = run(["pnputil", "/scan-devices", "/instanceid", clean], timeout=120)
+    if res.error:
+        return {"success": False, "message": res.error, "output": ""}
+
+    out = res.combined[-400:]
+    # pnputil devuelve 0 si todo va bien
+    if res.returncode == 0:
+        return {
+            "success": True,
+            "message": "Búsqueda de actualización completada. Si hay un controlador más reciente disponible, Windows lo instalará automáticamente.",
+            "output": out,
+        }
+    # Código 2 = no se encontró el dispositivo
+    if res.returncode == 2:
+        return {"success": False, "message": "Dispositivo no encontrado. Puede que ya no esté conectado.", "output": out}
+    if res.needs_admin:
+        return {"success": False, "message": "Se necesitan permisos de administrador. Reinicia PC Guardian como administrador.", "output": out}
+    return {"success": False, "message": f"pnputil terminó con código {res.returncode}.", "output": out}
 
 
 def uninstall_driver(device_id: str) -> dict:
@@ -239,25 +216,17 @@ def uninstall_driver(device_id: str) -> dict:
     if not clean:
         return {"success": False, "message": "ID de dispositivo no válido.", "output": ""}
 
-    try:
-        r = subprocess.run(
-            ["pnputil", "/remove-device", clean],
-            capture_output=True, text=True, timeout=60,
-            encoding="utf-8", errors="ignore",
-        )
-        out = ((r.stdout or "") + (r.stderr or "")).strip()
-        if r.returncode == 0:
-            return {
-                "success": True,
-                "message": "Dispositivo desinstalado correctamente. Puede reaparecer si Windows lo redetecta al reiniciar.",
-                "output": out[-400:],
-            }
-        if r.returncode == 740 or "acceso" in out.lower() or "elevat" in out.lower():
-            return {"success": False, "message": "Se necesitan permisos de administrador. Reinicia PC Guardian como administrador.", "output": out[-400:]}
-        return {"success": False, "message": f"No se pudo desinstalar el dispositivo (código {r.returncode}).", "output": out[-400:]}
-    except FileNotFoundError:
-        return {"success": False, "message": "pnputil no está disponible en este sistema.", "output": ""}
-    except subprocess.TimeoutExpired:
-        return {"success": False, "message": "La operación tardó demasiado y fue cancelada.", "output": ""}
-    except Exception as exc:
-        return {"success": False, "message": str(exc), "output": ""}
+    res = run(["pnputil", "/remove-device", clean], timeout=60)
+    if res.error:
+        return {"success": False, "message": res.error, "output": ""}
+
+    out = res.combined[-400:]
+    if res.returncode == 0:
+        return {
+            "success": True,
+            "message": "Dispositivo desinstalado correctamente. Puede reaparecer si Windows lo redetecta al reiniciar.",
+            "output": out,
+        }
+    if res.needs_admin:
+        return {"success": False, "message": "Se necesitan permisos de administrador. Reinicia PC Guardian como administrador.", "output": out}
+    return {"success": False, "message": f"No se pudo desinstalar el dispositivo (código {res.returncode}).", "output": out}

@@ -1,6 +1,7 @@
 """Antivirus y Firewall — una sola llamada PowerShell."""
 import json
-import subprocess
+
+from ._shell import run, run_ps_json
 
 
 _PS_AV = r"""
@@ -13,25 +14,14 @@ try {
 def _get_av() -> list:
     """Antivirus vía CIM (única llamada PS)."""
     try:
-        r = subprocess.run(
-            ["powershell", "-NonInteractive", "-NoProfile", "-Command", _PS_AV],
-            capture_output=True, text=True, timeout=12,
-            encoding="utf-8", errors="ignore",
-        )
-        data = json.loads(r.stdout.strip()) if r.stdout.strip() else []
-        return data if isinstance(data, list) else [data]
+        return run_ps_json(_PS_AV, timeout=12, default=[]) or []
     except Exception:
         return []
 
 def _get_firewall() -> list:
     """Firewall vía netsh — nativo, sin arrancar PowerShell."""
     try:
-        r = subprocess.run(
-            ["netsh", "advfirewall", "show", "allprofiles", "state"],
-            capture_output=True, text=True, timeout=6,
-            encoding="utf-8", errors="ignore",
-        )
-        lines = r.stdout or ""
+        lines = run(["netsh", "advfirewall", "show", "allprofiles", "state"], timeout=6).stdout
         profiles = []
         current = None
         for line in lines.splitlines():

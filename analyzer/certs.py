@@ -2,9 +2,10 @@
 Certificados del sistema — almacén de Windows.
 Detecta certificados caducados o próximos a caducar.
 """
-import subprocess
 import json
 from datetime import datetime, timezone
+
+from ._shell import run_ps, run_ps_json
 
 
 _PS = r"""
@@ -47,17 +48,7 @@ def _common_name(subject: str) -> str:
 
 def analyze_certs() -> dict:
     try:
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", _PS],
-            capture_output=True, text=True, timeout=30,
-            encoding="utf-8", errors="ignore",
-        )
-        raw = (r.stdout or "").strip()
-        if not raw:
-            certs_raw = []
-        else:
-            data = json.loads(raw)
-            certs_raw = data if isinstance(data, list) else [data]
+        certs_raw = run_ps_json(_PS, timeout=30, default=[]) or []
     except Exception as exc:
         return {
             "status": "warning", "title": "Certificados del sistema",
@@ -210,20 +201,12 @@ def delete_cert(store_path: str, thumbprint: str) -> dict:
         f"if ($cert) {{ $cert | Remove-Item -Force; Write-Output 'OK' }}"
         f"else {{ Write-Output 'NOT_FOUND' }}"
     )
-    try:
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=20,
-            encoding="utf-8", errors="ignore",
-        )
-        out = (r.stdout or "").strip()
-        err = (r.stderr or "").strip()
-        if "OK" in out:
-            return {"success": True, "message": "Certificado eliminado correctamente."}
-        if "NOT_FOUND" in out:
-            return {"success": False, "message": "Certificado no encontrado en el almacén."}
-        if "0x80070005" in err or "acceso" in err.lower():
-            return {"success": False, "message": "Se necesitan permisos de administrador. Reinicia PC Guardian como administrador."}
-        return {"success": False, "message": err[:200] or "Error desconocido."}
-    except Exception as exc:
-        return {"success": False, "message": str(exc)}
+    res = run_ps(cmd, timeout=20)
+    out, err = res.stdout.strip(), res.stderr.strip()
+    if "OK" in out:
+        return {"success": True, "message": "Certificado eliminado correctamente."}
+    if "NOT_FOUND" in out:
+        return {"success": False, "message": "Certificado no encontrado en el almacén."}
+    if res.needs_admin:
+        return {"success": False, "message": "Se necesitan permisos de administrador. Reinicia PC Guardian como administrador."}
+    return {"success": False, "message": err[:200] or res.error or "Error desconocido."}

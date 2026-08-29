@@ -1,6 +1,7 @@
-import subprocess
 import re
 import psutil
+
+from ._shell import run
 
 
 # ── Plan de energía ───────────────────────────────────────────────────────────
@@ -15,11 +16,7 @@ _POWER_PLANS = {
 
 def _get_power_plan() -> dict:
     try:
-        r = subprocess.run(
-            ["powercfg", "/getactivescheme"],
-            capture_output=True, timeout=10,
-        )
-        text = r.stdout.decode("oem", errors="ignore") + r.stdout.decode("utf-8", errors="ignore")
+        text = run(["powercfg", "/getactivescheme"], timeout=10).stdout
         m = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", text, re.I)
         if not m:
             return {"name": "Desconocido", "guid": "", "status": "ok"}
@@ -72,10 +69,7 @@ def _battery_health() -> dict | None:
     import tempfile, os, pathlib
     try:
         tmp = pathlib.Path(tempfile.gettempdir()) / "pcguardian_batt.html"
-        r = subprocess.run(
-            ["powercfg", "/batteryreport", "/output", str(tmp), "/duration", "1"],
-            capture_output=True, timeout=20,
-        )
+        run(["powercfg", "/batteryreport", "/output", str(tmp), "/duration", "1"], timeout=20)
         if not tmp.exists():
             return None
         html = tmp.read_text(encoding="utf-8", errors="ignore")

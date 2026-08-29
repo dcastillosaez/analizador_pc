@@ -1,6 +1,7 @@
-import subprocess
 import json
 import re
+
+from ._shell import run_ps, run_ps_json
 
 
 def check_windows_updates() -> dict:
@@ -19,23 +20,8 @@ try {
 } catch { '[]' }
 """
     try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=90
-        )
-        raw = result.stdout.strip()
-        if not raw:
-            raw = "[]"
-
-        try:
-            updates_raw = json.loads(raw)
-        except json.JSONDecodeError:
-            updates_raw = []
-
-        if isinstance(updates_raw, dict):
-            updates_raw = [updates_raw]
-
-    except subprocess.TimeoutExpired:
+        updates_raw = run_ps_json(cmd, timeout=90, default=[]) or []
+    except TimeoutError:
         return {
             "status": "warning",
             "title": "Actualizaciones Windows",
@@ -123,51 +109,48 @@ def apply_windows_update(update_id: str) -> dict:
     if not re.match(r'^[0-9a-fA-F\-]{36}$', update_id):
         return {"success": False, "message": "ID de actualización no válido.", "output": ""}
 
+    # El GUID ya está validado arriba; -EncodedCommand elimina además cualquier
+    # problema de comillas o escapado al pasar el script al shell.
     cmd = (
-        r"$s = New-Object -ComObject Microsoft.Update.Session;"
-        r"$sr = $s.CreateUpdateSearcher();"
-        r"try {"
-        r"  $r = $sr.Search(\"UpdateID='" + update_id + r"' and IsInstalled=0\");"
-        r"  if ($r.Updates.Count -eq 0) { Write-Output 'NOT_FOUND'; exit };"
-        r"  $dl = $s.CreateUpdateDownloader();"
-        r"  $dl.Updates = $r.Updates;"
-        r"  $dl.Download() | Out-Null;"
-        r"  $inst = $s.CreateUpdateInstaller();"
-        r"  $inst.Updates = $r.Updates;"
-        r"  $res = $inst.Install();"
-        r"  Write-Output ('RC=' + $res.ResultCode);"
-        r"  Write-Output ('REBOOT=' + $res.RebootRequired);"
-        r"} catch { Write-Output ('ERR=' + $_.Exception.Message) }"
+        "$s = New-Object -ComObject Microsoft.Update.Session;"
+        "$sr = $s.CreateUpdateSearcher();"
+        "try {"
+        "  $r = $sr.Search(\"UpdateID='" + update_id + "' and IsInstalled=0\");"
+        "  if ($r.Updates.Count -eq 0) { Write-Output 'NOT_FOUND'; exit };"
+        "  $dl = $s.CreateUpdateDownloader();"
+        "  $dl.Updates = $r.Updates;"
+        "  $dl.Download() | Out-Null;"
+        "  $inst = $s.CreateUpdateInstaller();"
+        "  $inst.Updates = $r.Updates;"
+        "  $res = $inst.Install();"
+        "  Write-Output ('RC=' + $res.ResultCode);"
+        "  Write-Output ('REBOOT=' + $res.RebootRequired);"
+        "} catch { Write-Output ('ERR=' + $_.Exception.Message) }"
     )
 
-    try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=600,
-        )
-        output = (result.stdout or "").strip()
-        stderr = (result.stderr or "").strip()
-        full_output = (output + "\n" + stderr).strip()
-
-        if "NOT_FOUND" in output:
-            return {"success": False, "message": "La actualización ya no figura como pendiente.", "output": full_output}
-        if "ERR=" in output:
-            err_msg = output.split("ERR=", 1)[1].splitlines()[0].strip()
-            if "0x80070005" in err_msg or "acceso" in err_msg.lower() or "access" in err_msg.lower():
-                return {"success": False, "message": "Se necesitan permisos de administrador para instalar actualizaciones. Reinicia PC Guardian como administrador.", "output": full_output}
-            return {"success": False, "message": err_msg, "output": full_output}
-
-        # ResultCode 2 = Succeeded, 3 = Succeeded with errors
-        if "RC=2" in output or "RC=3" in output:
-            reboot = "REBOOT=True" in output
-            msg = "Actualización instalada correctamente."
-            if reboot:
-                msg += " Es necesario reiniciar el equipo para completar la instalación."
-            return {"success": True, "message": msg, "reboot_required": reboot, "output": full_output}
-
-        return {"success": False, "message": "La actualización no pudo completarse (RC inesperado).", "output": full_output}
-
-    except subprocess.TimeoutExpired:
+    res = run_ps(cmd, timeout=600)
+    if res.timed_out:
         return {"success": False, "message": "La instalación tardó demasiado y fue cancelada.", "output": ""}
-    except Exception as exc:
-        return {"success": False, "message": str(exc), "output": ""}
+    if res.error:
+        return {"success": False, "message": res.error, "output": ""}
+
+    output = res.stdout.strip()
+    full_output = res.combined
+
+    if "NOT_FOUND" in output:
+        return {"success": False, "message": "La actualización ya no figura como pendiente.", "output": full_output}
+    if "ERR=" in output:
+        err_msg = output.split("ERR=", 1)[1].splitlines()[0].strip()
+        if res.needs_admin or "0x80070005" in err_msg:
+            return {"success": False, "message": "Se necesitan permisos de administrador para instalar actualizaciones. Reinicia PC Guardian como administrador.", "output": full_output}
+        return {"success": False, "message": err_msg, "output": full_output}
+
+    # ResultCode 2 = Succeeded, 3 = Succeeded with errors
+    if "RC=2" in output or "RC=3" in output:
+        reboot = "REBOOT=True" in output
+        msg = "Actualización instalada correctamente."
+        if reboot:
+            msg += " Es necesario reiniciar el equipo para completar la instalación."
+        return {"success": True, "message": msg, "reboot_required": reboot, "output": full_output}
+
+    return {"success": False, "message": "La actualización no pudo completarse (RC inesperado).", "output": full_output}

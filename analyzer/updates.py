@@ -1,27 +1,14 @@
-import subprocess
+from ._shell import run
 
 
 def _run_winget(args: list[str], timeout: int = 90) -> str:
-    try:
-        r = subprocess.run(
-            ["winget"] + args,
-            capture_output=True,
-            timeout=timeout,
-        )
-        raw = r.stdout or b""
-        # winget emite en la página OEM del sistema; probar varias codificaciones
-        for enc in ("utf-8", "oem", "cp1252", "latin-1"):
-            try:
-                return raw.decode(enc)
-            except (UnicodeDecodeError, LookupError):
-                continue
-        return raw.decode("latin-1")
-    except FileNotFoundError:
+    # winget emite en la página OEM del sistema; la decodificación la resuelve _shell.
+    res = run(["winget"] + args, timeout=timeout)
+    if res.not_found:
         return "__NO_WINGET__"
-    except subprocess.TimeoutExpired:
+    if res.timed_out:
         return "__TIMEOUT__"
-    except Exception:
-        return ""
+    return res.stdout
 
 
 def _parse_upgrade_list(output: str) -> list[dict]:
@@ -173,31 +160,24 @@ def update_package(package_id: str) -> dict:
     if not re.match(r"^[\w.\-\+]+$", package_id):
         return {"success": False, "message": "ID de paquete no válido.", "output": ""}
 
-    try:
-        r = subprocess.run(
-            [
-                "winget", "upgrade",
-                "--id", package_id,
-                "--silent",
-                "--force",
-                "--disable-interactivity",
-                "--accept-package-agreements",
-                "--accept-source-agreements",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        success = r.returncode == 0
-        raw = (r.stdout or "") + (r.stderr or "")
-        return {
-            "success": success,
-            "message": "Actualización completada correctamente." if success else "La actualización no pudo completarse.",
-            "output": raw[-600:].strip(),
-        }
-    except subprocess.TimeoutExpired:
+    res = run(
+        [
+            "winget", "upgrade",
+            "--id", package_id,
+            "--silent",
+            "--force",
+            "--disable-interactivity",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ],
+        timeout=300,
+    )
+    if res.timed_out:
         return {"success": False, "message": "La actualización tardó demasiado y se canceló.", "output": ""}
-    except Exception as e:
-        return {"success": False, "message": str(e), "output": ""}
+    if res.error:
+        return {"success": False, "message": res.error, "output": ""}
+    return {
+        "success": res.ok,
+        "message": "Actualización completada correctamente." if res.ok else "La actualización no pudo completarse.",
+        "output": res.combined[-600:],
+    }
