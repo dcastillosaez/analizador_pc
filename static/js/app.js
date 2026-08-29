@@ -1580,13 +1580,40 @@ ${sections}
 <footer>PC Guardian · Informe generado automáticamente</footer>
 </body></html>`;
 
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  _descargar(html, 'text/html;charset=utf-8', 'html');
+}
+
+/** Descarga un contenido generado en el navegador como fichero. */
+function _descargar(contenido, tipo, extension) {
+  const blob = new Blob([contenido], { type: tipo });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
-  a.download = `PCGuardian_${new Date().toISOString().slice(0,10)}.html`;
+  a.download = `PCGuardian_${new Date().toISOString().slice(0, 10)}.${extension}`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Exporta los datos en bruto. El HTML es para leerlo; esto es para procesarlo:
+ *  comparar dos escaneos con un script, alimentar una hoja de calculo o
+ *  guardarlo como referencia de como estaba el equipo un dia concreto. */
+function exportReportJSON() {
+  const results = (typeof scanResults !== 'undefined' ? scanResults : {});
+  if (!Object.keys(results).length) {
+    alert('Primero ejecuta "Escanear Sistema" para tener datos que exportar.');
+    return;
+  }
+
+  const payload = {
+    generado: new Date().toISOString(),
+    aplicacion: 'PC Guardian',
+    puntuacion: (typeof _lastScore !== 'undefined') ? _lastScore : null,
+    incidencias_totales: Object.values(results)
+      .reduce((n, m) => n + ((m && m.issue_count) || 0), 0),
+    modulos: results,
+  };
+
+  _descargar(JSON.stringify(payload, null, 2), 'application/json;charset=utf-8', 'json');
 }
 
 /* ── Analizador WiFi ─────────────────────────────────────────────────────── */
@@ -2277,3 +2304,44 @@ function renderConnections(data) {
   return `<div class="card-summary">${escHtml(data.summary)}</div>
     <div class="conn-list">${visibles}${ocultas}${boton}</div>`;
 }
+
+/* ── Tema claro / oscuro ──────────────────────────────────────────────────── */
+// Se aplica antes del primer render para no mostrar un fogonazo oscuro a quien
+// tiene el sistema en claro. La preferencia manual gana sobre la del sistema.
+
+const THEME_KEY = 'pcg-theme';
+
+function _temaDelSistema() {
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+    ? 'light' : 'dark';
+}
+
+function aplicarTema(tema) {
+  document.documentElement.setAttribute('data-theme', tema);
+  const btn = _id('theme-btn');
+  if (btn) {
+    btn.title = tema === 'light' ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro';
+  }
+}
+
+function toggleTheme() {
+  const actual = document.documentElement.getAttribute('data-theme') || _temaDelSistema();
+  const nuevo = actual === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem(THEME_KEY, nuevo); } catch (e) { /* modo privado */ }
+  aplicarTema(nuevo);
+}
+
+(function iniciarTema() {
+  let guardado = null;
+  try { guardado = localStorage.getItem(THEME_KEY); } catch (e) { /* modo privado */ }
+  aplicarTema(guardado || _temaDelSistema());
+
+  // Si el usuario no ha elegido, se sigue al sistema cuando cambie.
+  if (!guardado && window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ev => {
+      let elegido = null;
+      try { elegido = localStorage.getItem(THEME_KEY); } catch (e) { /* modo privado */ }
+      if (!elegido) aplicarTema(ev.matches ? 'light' : 'dark');
+    });
+  }
+})();
