@@ -1,7 +1,6 @@
-import math
-import os
-
 import psutil
+
+from ._text import looks_random, shannon_entropy
 
 # Número esperado de instancias (min, max)
 CRITICAL_PROCS = {
@@ -32,19 +31,9 @@ SAFE_PREFIXES = (
 )
 
 
-def _entropy(s: str) -> float:
-    if not s:
-        return 0.0
-    probs = [s.count(c) / len(s) for c in set(s)]
-    return -sum(p * math.log2(p) for p in probs)
-
-
-def _looks_random(name: str) -> bool:
-    base = os.path.splitext(name)[0].lower()
-    if len(base) < 6:
-        return False
-    vowel_ratio = sum(1 for c in base if c in "aeiou") / len(base)
-    return _entropy(base) > 3.6 and vowel_ratio < 0.15
+# Heuristica compartida con services.py (ver analyzer/_text.py para los umbrales).
+_entropy = shannon_entropy
+_looks_random = looks_random
 
 
 def analyze_security() -> dict:

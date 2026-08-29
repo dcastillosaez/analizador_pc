@@ -1,8 +1,8 @@
 import json
-import math
 import re
 
 from ._shell import run_ps_json
+from ._text import looks_random, shannon_entropy
 
 SYSTEM_WHITELIST = {
     'AudioEndpointBuilder', 'Audiosrv', 'BFE', 'BrokerInfrastructure',
@@ -26,20 +26,12 @@ STANDARD_PATHS = (
 )
 
 
-def _shannon_entropy(s: str) -> float:
-    """Calcula la entropía de Shannon de una cadena."""
-    if not s:
-        return 0.0
-    freq = {}
-    for ch in s:
-        freq[ch] = freq.get(ch, 0) + 1
-    n = len(s)
-    return -sum((c / n) * math.log2(c / n) for c in freq.values())
+_shannon_entropy = shannon_entropy
 
 
 def _is_suspicious_name(name: str) -> bool:
-    """Entropía alta en el nombre del servicio puede indicar algo generado aleatoriamente."""
-    return _shannon_entropy(name) > 4.0 and len(name) > 8
+    """Un nombre de servicio generado al azar delata persistencia de malware."""
+    return looks_random(name)
 
 
 def _is_standard_path(path: str) -> bool:
