@@ -24,10 +24,12 @@ const MODULE_META = {
   wupdates:     { label: 'Updates Windows',  group: 'Mantenimiento', emoji: '🪟', color: '#0078d4' },
   wifi:         { label: 'Analizador WiFi', group: 'Red',           emoji: '📶', color: '#00cec9' },
   certs:        { label: 'Certificados',   group: 'Red',           emoji: '🏅', color: '#fdcb6e' },
+  processes:    { label: 'Procesos',        group: 'Rendimiento',   emoji: '🖥️', color: '#00b894' },
+  connections:  { label: 'Conexiones',      group: 'Red',           emoji: '🔗', color: '#0984e3' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
-const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services'];
+const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','connections'];
 
 // Estado de navegación
 let activeView = 'overview';
@@ -307,6 +309,7 @@ const MODULES = [
   { id: 'energy',       label: 'Leyendo sensores de energía y temperatura…',  step: 'pstep-energy'       },
   { id: 'privacy',      label: 'Auditando privacidad y archivos temporales…', step: 'pstep-privacy'      },
   { id: 'services',     label: 'Inspeccionando servicios de Windows…',       step: 'pstep-services'     },
+  { id: 'connections',  label: 'Revisando conexiones salientes activas…',    step: 'pstep-connections'  },
 ];
 
 let scanResults = {};
@@ -324,6 +327,8 @@ const MODULE_CMDS = {
   updates:     ['winget list --upgrade-available --source winget'],
   connectivity: ['ping -n 4 8.8.8.8', 'socket.gethostbyname("www.google.com")', 'route print 0.0.0.0'],
   energy:       ['powercfg /getactivescheme', 'psutil.sensors_battery()', 'wmi.WMI(namespace="root\\\\OpenHardwareMonitor").Sensor()'],
+  processes:    ['psutil.process_iter(["pid","name"])', 'proc.cpu_percent(interval=0.6)', 'proc.memory_info().rss'],
+  connections:  ['psutil.net_connections(kind="tcp")', 'socket.gethostbyaddr(remote_ip)'],
   privacy:      ['winreg HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection', 'winreg HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore', 'Get-WinEvent -FilterHashtable @{LogName="System";Level=1,2}'],
 };
 
@@ -448,6 +453,10 @@ function renderCard(id, data) {
     body.innerHTML = renderWifi(data);
     const btnWifi = document.getElementById('btn-wifi');
     if (btnWifi) btnWifi.style.display = '';
+  } else if (id === 'processes') {
+    body.innerHTML = renderProcesses(data);
+  } else if (id === 'connections') {
+    body.innerHTML = renderConnections(data);
   } else if (id === 'certs') {
     body.innerHTML = renderCerts(data);
     const btnC = document.getElementById('btn-certs');
@@ -2131,4 +2140,95 @@ async function compareSelectedScans() {
     </div>`;
 
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+
+/* ── Procesos activos ─────────────────────────────────────────────────────── */
+// Lo que se abre cuando el equipo va lento: quien se esta comiendo la maquina
+// y un boton para cerrarlo sin salir a buscar el Administrador de tareas.
+
+function _barra(pct, clase) {
+  const w = Math.max(2, Math.min(100, pct));
+  return `<div class="proc-bar ${clase}"><span style="width:${w}%"></span></div>`;
+}
+
+function renderProcesses(data) {
+  if (!data.items || !data.items.length) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state"><span class="empty-emoji">\u{1F4CA}</span><p>${escHtml(data.summary)}</p></div>`;
+  }
+
+  const filas = data.items.map(p => `
+    <div class="proc-row s-${escHtml(p.status)}">
+      <div class="proc-main">
+        <span class="proc-name">${escHtml(p.name)}</span>
+        <span class="proc-pid">PID ${p.pid}</span>
+      </div>
+      <div class="proc-metric">
+        ${_barra(p.cpu, 'cpu')}
+        <span class="proc-num">${p.cpu.toFixed(1)}% CPU</span>
+      </div>
+      <div class="proc-metric">
+        ${_barra(p.ram_pct, 'ram')}
+        <span class="proc-num">${p.ram_mb.toFixed(0)} MB</span>
+      </div>
+      <div class="proc-action">
+        ${p.protected
+          ? '<span class="proc-locked" title="Proceso critico de Windows">Protegido</span>'
+          : `<button class="proc-kill" onclick="killProcess(${p.pid}, '${escHtml(p.name).replace(/'/g, "\\'")}')">Terminar</button>`}
+      </div>
+      <div class="proc-path" title="${escHtml(p.detail)}">${escHtml(p.detail)}</div>
+    </div>`).join('');
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="proc-list">${filas}</div>`;
+}
+
+async function killProcess(pid, name) {
+  if (!confirm(`Se cerrara "${name}" (PID ${pid}) de forma inmediata.\n\n` +
+               `El programa perdera lo que no haya guardado. \u00bfContinuar?`)) return;
+  try {
+    const res = await fetch('/api/process/kill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pid }),
+    });
+    const data = await res.json();
+    alert(data.message);
+    if (data.success) _triggerModuleScan('processes');
+  } catch (e) {
+    alert('No se pudo terminar el proceso: ' + e.message);
+  }
+}
+
+/* ── Conexiones salientes ─────────────────────────────────────────────────── */
+
+function renderConnections(data) {
+  if (!data.items || !data.items.length) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state"><span class="empty-emoji">\u{1F310}</span><p>${escHtml(data.summary)}</p></div>`;
+  }
+
+  const MAX_VISIBLE = 8;
+  const fila = (c, oculta) => `
+    <div class="conn-row s-${escHtml(c.status)}${oculta ? ' hidden-item' : ''}">
+      <span class="conn-dot dot-${escHtml(c.status)}"></span>
+      <div class="conn-body">
+        <div class="conn-head">
+          <strong>${escHtml(c.name)}</strong>
+          <span class="conn-endpoint">${escHtml(c.value)}</span>
+        </div>
+        <div class="conn-msg">${escHtml(c.message)}</div>
+        <div class="conn-path">${escHtml(c.detail)}</div>
+      </div>
+    </div>`;
+
+  const visibles = data.items.slice(0, MAX_VISIBLE).map(c => fila(c, false)).join('');
+  const resto    = data.items.slice(MAX_VISIBLE);
+  const ocultas  = resto.map(c => fila(c, true)).join('');
+  const boton    = resto.length
+    ? `<button class="show-more-btn">Mostrar ${resto.length} m\u00e1s\u2026</button>` : '';
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="conn-list">${visibles}${ocultas}${boton}</div>`;
 }

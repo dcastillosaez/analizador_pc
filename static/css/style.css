@@ -1860,3 +1860,85 @@ body {
   .history-actions { width: 100%; }
   .history-btn { flex: 1; }
 }
+
+
+/* ── Procesos activos ─────────────────────────────────────── */
+.proc-list { display: flex; flex-direction: column; gap: 4px; }
+
+.proc-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.4fr) 1fr 1fr auto;
+  grid-template-areas: "main cpu ram action" "path path path path";
+  align-items: center; gap: 8px 14px;
+  padding: 10px 12px; border-radius: 9px;
+  border-left: 2px solid var(--muted);
+  background: rgba(255,255,255,.025);
+  font-size: 13px;
+}
+.proc-row.s-warning { border-left-color: var(--warning); }
+.proc-row.s-danger  { border-left-color: var(--danger); }
+
+.proc-main { grid-area: main; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.proc-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-pid  { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.proc-metric { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.proc-bar { height: 4px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+.proc-bar span { display: block; height: 100%; border-radius: 3px; }
+.proc-bar.cpu span { background: var(--primary); }
+.proc-bar.ram span { background: #a29bfe; }
+.proc-num { font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+
+.proc-action { grid-area: action; }
+.proc-kill {
+  padding: 5px 11px; border-radius: 7px; font-size: 11px; font-weight: 600;
+  border: 1px solid rgba(255,71,87,.35); background: transparent;
+  color: var(--danger); cursor: pointer; transition: all var(--tr); white-space: nowrap;
+}
+.proc-kill:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.proc-locked { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+
+.proc-path {
+  grid-area: path; font-size: 10px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .proc-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "main action" "cpu cpu" "ram ram" "path path";
+  }
+  .proc-metric { flex-direction: row; align-items: center; gap: 10px; }
+  .proc-bar { flex: 1; }
+}
+
+/* ── Conexiones salientes ────────────────────────────────── */
+.conn-list { display: flex; flex-direction: column; gap: 4px; }
+
+.conn-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 9px;
+  background: rgba(255,255,255,.025);
+  border-left: 2px solid var(--muted);
+}
+.conn-row.s-warning { border-left-color: var(--warning); }
+.conn-row.s-danger  { border-left-color: var(--danger); }
+.conn-row.hidden-item { display: none; }
+
+.conn-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+.conn-body { min-width: 0; flex: 1; }
+.conn-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.conn-head strong { font-size: 13px; font-weight: 600; }
+.conn-endpoint {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 11px; color: var(--primary2);
+  padding: 1px 7px; border-radius: 5px; background: rgba(79,142,247,.1);
+}
+.conn-msg  { font-size: 12px; color: var(--text-soft); margin-top: 3px; }
+.conn-path {
+  font-size: 10px; color: var(--text-muted); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.card-icon-wrap.c-processes { background: linear-gradient(135deg, rgba(0,184,148,.18), rgba(0,184,148,.05)); color: #00b894; }
+.card-icon-wrap.c-connections { background: linear-gradient(135deg, rgba(9,132,227,.18), rgba(9,132,227,.05)); color: #0984e3; }

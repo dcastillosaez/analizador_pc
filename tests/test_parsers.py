@@ -271,3 +271,82 @@ class TestCommonName:
 
     def test_sin_cn_devuelve_el_subject(self):
         assert _common_name("O=Contoso, C=ES") == "O=Contoso, C=ES"
+
+
+# ── Conexiones salientes ──────────────────────────────────────────────────────
+
+from analyzer import connections  # noqa: E402
+
+
+class TestClasificacionDeConexiones:
+    """Lo importante aquí es no marcar como sospechosa media máquina."""
+
+    @pytest.mark.parametrize("exe", [
+        r"C:\Users\ana\AppData\Local\Temp\dropper.exe",
+        r"C:\Users\ana\Downloads\setup.exe",
+        r"C:\Users\ana\Descargas\instalador.exe",
+        r"C:\Windows\Temp\svc.exe",
+    ])
+    def test_ejecutable_en_carpeta_temporal_o_descargas(self, exe):
+        assert connections._classify(exe, "algo.exe", 443)[0] == "danger"
+
+    @pytest.mark.parametrize("exe,name,port", [
+        # Aplicaciones que se instalan en el perfil del usuario: normal hoy.
+        (r"C:\Users\ana\AppData\Local\Programs\Slack\slack.exe", "slack.exe", 443),
+        (r"C:\Users\ana\AppData\Local\Discord\app-1.0\Discord.exe", "Discord.exe", 443),
+        (r"C:\Program Files\Google\Chrome\chrome.exe", "chrome.exe", 5228),
+        (r"C:\Windows\System32\svchost.exe", "svchost.exe", 5353),
+    ])
+    def test_no_marca_aplicaciones_normales(self, exe, name, port):
+        assert connections._classify(exe, name, port)[0] == "ok"
+
+    def test_nombre_generado_al_azar(self):
+        exe = r"C:\Users\ana\AppData\Roaming\App\wdfghjklzxcv.exe"
+        assert connections._classify(exe, "wdfghjklzxcv.exe", 443)[0] == "warning"
+
+    def test_puerto_raro_solo_avisa_fuera_de_rutas_de_sistema(self):
+        assert connections._classify(r"C:\Windows\System32\x.exe", "x.exe", 47777)[0] == "ok"
+        assert connections._classify(r"D:\juegos\x.exe", "x.exe", 47777)[0] == "warning"
+
+    @pytest.mark.parametrize("ip,esperado", [
+        ("8.8.8.8", True), ("192.168.1.10", False), ("127.0.0.1", False),
+        ("10.0.0.5", False), ("169.254.1.1", False), ("2606:4700::1111", True),
+        ("no-es-una-ip", False),
+    ])
+    def test_solo_cuenta_lo_que_sale_de_la_red_local(self, ip, esperado):
+        assert connections._is_external(ip) is esperado
+
+    def test_ipv6_se_formatea_con_corchetes(self):
+        assert connections._fmt_endpoint("2606:4700::1111", 443) == "[2606:4700::1111]:443"
+        assert connections._fmt_endpoint("8.8.8.8", 53) == "8.8.8.8:53"
+
+
+# ── Procesos ──────────────────────────────────────────────────────────────────
+
+from analyzer import processes  # noqa: E402
+
+
+class TestProcesos:
+    def test_no_se_puede_matar_el_nucleo(self):
+        assert processes.kill_process(4)["success"] is False
+        assert processes.kill_process(0)["success"] is False
+
+    def test_pid_invalido(self):
+        assert processes.kill_process("abc")["success"] is False
+
+    def test_no_se_mata_a_si_mismo(self):
+        import os
+        res = processes.kill_process(os.getpid())
+        assert res["success"] is False
+        assert "PC Guardian" in res["message"]
+
+    def test_el_proceso_inactivo_no_cuenta_como_consumo(self):
+        # Mide la CPU libre: apareceria siempre el primero con un 80-90%.
+        assert "system idle process" in processes.IGNORED
+
+    @pytest.mark.parametrize("cpu,ram,esperado", [
+        (0.5, 1.0, "ok"), (20.0, 1.0, "warning"), (50.0, 1.0, "danger"),
+        (1.0, 10.0, "warning"), (1.0, 25.0, "danger"),
+    ])
+    def test_clasificacion_por_consumo(self, cpu, ram, esperado):
+        assert processes._classify(cpu, ram) == esperado

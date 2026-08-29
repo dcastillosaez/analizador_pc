@@ -202,8 +202,31 @@
           <span class="nav-dot dot-pending" id="nav-dot-wifi"></span>
         </div>
 
+        <div class="nav-item" id="nav-item-connections" onclick="navigateTo('connections')" tabindex="0" title="Conexiones salientes" role="button" aria-label="Conexiones salientes">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M13 6l6 6-6 6"/>
+              <circle cx="3" cy="12" r="1.6"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Conexiones</span>
+          <span class="nav-dot dot-pending" id="nav-dot-connections"></span>
+        </div>
+
         <!-- Grupo: Rendimiento -->
         <div class="nav-group-label">Rendimiento</div>
+
+        <div class="nav-item" id="nav-item-processes" onclick="navigateTo('processes')" tabindex="0" title="Procesos activos" role="button" aria-label="Procesos activos">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+              <rect x="9" y="9" width="6" height="6"/>
+              <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Procesos</span>
+          <span class="nav-dot dot-pending" id="nav-dot-processes"></span>
+        </div>
 
         <div class="nav-item" id="nav-item-perf" onclick="navigateTo('perf')" tabindex="0" title="Monitor vivo" role="button" aria-label="Monitor de rendimiento">
           <div class="nav-item-icon">
@@ -263,6 +286,7 @@
           <span class="nav-dot dot-pending" id="nav-dot-wupdates"></span>
         </div>
 
+        
         <!-- Grupo: Privacidad -->
         <div class="nav-group-label">Privacidad</div>
 
@@ -278,6 +302,7 @@
           <span class="nav-dot dot-pending" id="nav-dot-privacy"></span>
         </div>
 
+        
         <!-- Grupo: Historial -->
         <div class="nav-group-label">Historial</div>
 
@@ -439,6 +464,10 @@
               <div class="pstep" id="pstep-services">
                 <div class="pstep-dot"></div><span>Servicios</span>
                 <span class="pstep-time" id="ptime-services"></span>
+              </div>
+              <div class="pstep" id="pstep-connections">
+                <div class="pstep-dot"></div><span>Conexiones</span>
+                <span class="pstep-time" id="ptime-connections"></span>
               </div>
             </div>
 
@@ -803,6 +832,47 @@
       </div>
       <div class="card-body" id="body-services">
         <div class="empty-state"><span class="empty-emoji">⚙️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Procesos activos -->
+    <div class="card" id="card-processes">
+      <div class="card-header">
+        <div class="card-icon-wrap c-processes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"/>
+            <rect x="9" y="9" width="6" height="6"/>
+            <path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Procesos activos</h2>
+          <p>Los que más CPU y memoria consumen ahora mismo</p>
+        </div>
+        <div class="card-badge" id="badge-processes"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-processes">
+        <div class="empty-state"><span class="empty-emoji">🖥️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Conexiones salientes -->
+    <div class="card" id="card-connections">
+      <div class="card-header">
+        <div class="card-icon-wrap c-connections">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M13 6l6 6-6 6"/>
+            <circle cx="3" cy="12" r="1.6"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Conexiones salientes</h2>
+          <p>Qué procesos están hablando con Internet en este momento</p>
+        </div>
+        <div class="card-badge" id="badge-connections"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-connections">
+        <div class="empty-state"><span class="empty-emoji">🌐</span><p>Pendiente de análisis</p></div>
       </div>
     </div>
 
