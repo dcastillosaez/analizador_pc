@@ -469,3 +469,74 @@ class TestResolucionDeConexiones:
         datos = connections.analyze_connections()
         assert datos["title"] == "Conexiones salientes"
         assert datos["status"] in ("ok", "warning", "danger")
+
+
+# ── Ubicación de las bases de datos ───────────────────────────────────────────
+
+from analyzer import _storage  # noqa: E402
+
+
+class TestUbicacionDeDatos:
+    """Las bases viven en el perfil del usuario, no junto al código.
+
+    Junto al código fallaban en los dos escenarios reales: instaladas bajo
+    Program Files (carpeta de solo lectura) y compiladas con PyInstaller, donde
+    __file__ apunta a una carpeta temporal que Windows borra al cerrar.
+    """
+
+    def test_la_carpeta_de_datos_existe_y_es_escribible(self):
+        carpeta = _storage.data_dir()
+        assert carpeta.is_dir()
+        prueba = carpeta / ".escritura_test"
+        prueba.write_text("ok", encoding="utf-8")
+        assert prueba.read_text(encoding="utf-8") == "ok"
+        prueba.unlink()
+
+    def test_la_ruta_queda_fuera_del_proyecto(self):
+        proyecto = Path(_storage.__file__).resolve().parent.parent
+        assert proyecto not in Path(_storage.db_path("history.db")).resolve().parents
+
+    def test_migra_la_base_antigua_conservando_los_datos(self, tmp_path, monkeypatch):
+        import sqlite3
+
+        antigua = tmp_path / "proyecto" / "vieja.db"
+        antigua.parent.mkdir()
+        con = sqlite3.connect(antigua)
+        con.execute("CREATE TABLE t (v TEXT)")
+        con.execute("INSERT INTO t VALUES ('dato importante')")
+        con.commit()
+        con.close()
+
+        destino_dir = tmp_path / "appdata"
+        destino_dir.mkdir()
+        monkeypatch.setattr(_storage, "data_dir", lambda: destino_dir)
+        monkeypatch.setattr(_storage, "_rutas_antiguas", lambda nombre: [antigua])
+
+        ruta = _storage.db_path("vieja.db")
+
+        assert not antigua.exists()                    # se movió, no se copió
+        assert Path(ruta).parent == destino_dir
+        con = sqlite3.connect(ruta)
+        assert con.execute("SELECT v FROM t").fetchone()[0] == "dato importante"
+        con.close()
+
+    def test_no_pisa_una_base_que_ya_existe_en_el_destino(self, tmp_path, monkeypatch):
+        antigua = tmp_path / "vieja.db"
+        antigua.write_text("origen", encoding="utf-8")
+        destino_dir = tmp_path / "appdata"
+        destino_dir.mkdir()
+        (destino_dir / "vieja.db").write_text("destino", encoding="utf-8")
+
+        monkeypatch.setattr(_storage, "data_dir", lambda: destino_dir)
+        monkeypatch.setattr(_storage, "_rutas_antiguas", lambda nombre: [antigua])
+
+        ruta = _storage.db_path("vieja.db")
+        assert Path(ruta).read_text(encoding="utf-8") == "destino"
+        assert antigua.exists()                        # la antigua no se toca
+
+    def test_sin_base_antigua_no_falla(self, tmp_path, monkeypatch):
+        destino_dir = tmp_path / "appdata"
+        destino_dir.mkdir()
+        monkeypatch.setattr(_storage, "data_dir", lambda: destino_dir)
+        monkeypatch.setattr(_storage, "_rutas_antiguas", lambda nombre: [tmp_path / "no_existe.db"])
+        assert _storage.db_path("nueva.db") == str(destino_dir / "nueva.db")

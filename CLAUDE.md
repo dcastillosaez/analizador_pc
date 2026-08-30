@@ -19,6 +19,8 @@ analyzer/
                             timeouts sin excepciones, is_admin/relaunch_as_admin
   _text.py                  Heurística compartida de nombres generados al azar
                             (entropía + proporción de vocales, umbrales calibrados)
+  _storage.py               Ubicación de las bases de datos (%LOCALAPPDATA%\PCGuardian)
+                            y migración desde la ubicación antigua
   hardware.py               CPU, RAM, disco — psutil
   startup.py                Claves Run del registro — winreg; incluye fix_hive/fix_key/fix_name
   security.py               Procesos sospechosos: ruta + firma Authenticode
@@ -185,3 +187,8 @@ Todos los módulos de escaneo devuelven:
   la entropía máxima de una cadena de 12 caracteres distintos es 3,58.
 - No añadas dependencias externas sin actualizar `requirements.txt`, `PCGuardian.spec`
   (lista `hiddenimports`) y este fichero.
+- Las bases de datos (`history.db`, `perf_history.db`, `benchmark.db`) viven en
+  `%LOCALAPPDATA%\PCGuardian` a través de `_storage.db_path()`, nunca junto al código:
+  bajo `Program Files` la carpeta es de solo lectura, y compilada con PyInstaller
+  `__file__` apunta a una temporal que Windows borra al cerrar, así que el historial
+  no sobrevivía ni a reiniciar la app.

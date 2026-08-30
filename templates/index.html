@@ -588,6 +588,101 @@
         <!-- JS rellena esta área: overview o module detail -->
       </main>
 
+    <!-- ── HISTORIAL ──────────────────────────────────────────────────────── -->
+    <div id="history-section" class="history-section hidden">
+      <div class="history-header">
+        <button class="module-back-btn" onclick="navigateTo('overview')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+          </svg>
+          Resumen
+        </button>
+        <h2 class="history-title">Historial de escaneos</h2>
+      </div>
+      <div id="history-body">
+        <div class="empty-state" style="padding:40px 0">
+          <span class="empty-emoji">⏳</span><p>Cargando historial…</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TENDENCIAS DE RENDIMIENTO ─────────────────────────────────────── -->
+    <div id="perf-history-section" class="history-section hidden">
+      <div class="history-header">
+        <button class="module-back-btn" onclick="navigateTo('overview')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+          </svg>
+          Resumen
+        </button>
+        <h2 class="history-title">Tendencias de rendimiento</h2>
+      </div>
+      <div id="perf-history-body">
+        <div class="empty-state" style="padding:40px 0">
+          <span class="empty-emoji">⏳</span><p>Cargando tendencias…</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MAPA DE DISCO ─────────────────────────────────────────────────── -->
+    <div id="diskmap-section" class="history-section hidden">
+      <div class="history-header">
+        <button class="module-back-btn" onclick="navigateTo('overview')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+          Resumen
+        </button>
+        <h2 class="history-title">Mapa de disco</h2>
+      </div>
+      <div class="diskmap-toolbar">
+        <input type="text" id="diskmap-path-input" class="soft-search" style="max-width:440px"
+               placeholder="Ruta a escanear (p.ej. C:\Users\...)" />
+        <button class="btn-quickfix" id="diskmap-scan-btn" onclick="scanDiskmap()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Escanear
+        </button>
+      </div>
+      <div id="diskmap-breadcrumb" class="diskmap-breadcrumb"></div>
+      <div id="diskmap-body">
+        <div class="empty-state" style="padding:40px 0"><span class="empty-emoji">💾</span><p>Introduce una ruta y pulsa "Escanear".</p></div>
+      </div>
+    </div>
+
+    <!-- ── ARCHIVOS DUPLICADOS ───────────────────────────────────────────── -->
+    <div id="duplicates-section" class="history-section hidden">
+      <div class="history-header">
+        <button class="module-back-btn" onclick="navigateTo('overview')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+          Resumen
+        </button>
+        <h2 class="history-title">Archivos duplicados</h2>
+      </div>
+      <div class="diskmap-toolbar">
+        <input type="text" id="dup-path-input" class="soft-search" style="max-width:440px"
+               placeholder="Ruta a analizar (p.ej. C:\Users\...)" />
+        <button class="btn-quickfix" id="dup-scan-btn" onclick="scanDuplicates()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Buscar duplicados
+        </button>
+      </div>
+      <div id="dup-body">
+        <div class="empty-state" style="padding:40px 0"><span class="empty-emoji">📋</span><p>Introduce una ruta y pulsa "Buscar duplicados".</p></div>
+      </div>
+    </div>
+
+    <!-- ── NOTIFICACIONES PROGRAMADAS ────────────────────────────────────── -->
+    <div id="notifications-section" class="history-section hidden">
+      <div class="history-header">
+        <button class="module-back-btn" onclick="navigateTo('overview')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+          Resumen
+        </button>
+        <h2 class="history-title">Notificaciones programadas</h2>
+      </div>
+      <div id="notifications-body">
+        <div class="empty-state" style="padding:40px 0"><span class="empty-emoji">⏳</span><p>Cargando…</p></div>
+      </div>
+    </div>
+
       <!-- Barra de resumen (legacy, se mantiene oculta hasta que haya escaneo completo) -->
       <div id="summary-bar" class="summary-bar hidden">
         <div class="summary-inner">
@@ -1186,101 +1281,6 @@
     </div>
 
   </div><!-- /#cards-pool -->
-
-  <!-- ── HISTORIAL ──────────────────────────────────────────────────────── -->
-  <div id="history-section" class="history-section hidden">
-    <div class="history-header">
-      <button class="module-back-btn" onclick="navigateTo('overview')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
-        </svg>
-        Resumen
-      </button>
-      <h2 class="history-title">Historial de escaneos</h2>
-    </div>
-    <div id="history-body">
-      <div class="empty-state" style="padding:40px 0">
-        <span class="empty-emoji">⏳</span><p>Cargando historial…</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── TENDENCIAS DE RENDIMIENTO ─────────────────────────────────────── -->
-  <div id="perf-history-section" class="history-section hidden">
-    <div class="history-header">
-      <button class="module-back-btn" onclick="navigateTo('overview')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
-        </svg>
-        Resumen
-      </button>
-      <h2 class="history-title">Tendencias de rendimiento</h2>
-    </div>
-    <div id="perf-history-body">
-      <div class="empty-state" style="padding:40px 0">
-        <span class="empty-emoji">⏳</span><p>Cargando tendencias…</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── MAPA DE DISCO ─────────────────────────────────────────────────── -->
-  <div id="diskmap-section" class="history-section hidden">
-    <div class="history-header">
-      <button class="module-back-btn" onclick="navigateTo('overview')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
-        Resumen
-      </button>
-      <h2 class="history-title">Mapa de disco</h2>
-    </div>
-    <div class="diskmap-toolbar">
-      <input type="text" id="diskmap-path-input" class="soft-search" style="max-width:440px"
-             placeholder="Ruta a escanear (p.ej. C:\Users\...)" />
-      <button class="btn-quickfix" id="diskmap-scan-btn" onclick="scanDiskmap()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Escanear
-      </button>
-    </div>
-    <div id="diskmap-breadcrumb" class="diskmap-breadcrumb"></div>
-    <div id="diskmap-body">
-      <div class="empty-state" style="padding:40px 0"><span class="empty-emoji">💾</span><p>Introduce una ruta y pulsa "Escanear".</p></div>
-    </div>
-  </div>
-
-  <!-- ── ARCHIVOS DUPLICADOS ───────────────────────────────────────────── -->
-  <div id="duplicates-section" class="history-section hidden">
-    <div class="history-header">
-      <button class="module-back-btn" onclick="navigateTo('overview')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
-        Resumen
-      </button>
-      <h2 class="history-title">Archivos duplicados</h2>
-    </div>
-    <div class="diskmap-toolbar">
-      <input type="text" id="dup-path-input" class="soft-search" style="max-width:440px"
-             placeholder="Ruta a analizar (p.ej. C:\Users\...)" />
-      <button class="btn-quickfix" id="dup-scan-btn" onclick="scanDuplicates()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        Buscar duplicados
-      </button>
-    </div>
-    <div id="dup-body">
-      <div class="empty-state" style="padding:40px 0"><span class="empty-emoji">📋</span><p>Introduce una ruta y pulsa "Buscar duplicados".</p></div>
-    </div>
-  </div>
-
-  <!-- ── NOTIFICACIONES PROGRAMADAS ────────────────────────────────────── -->
-  <div id="notifications-section" class="history-section hidden">
-    <div class="history-header">
-      <button class="module-back-btn" onclick="navigateTo('overview')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
-        Resumen
-      </button>
-      <h2 class="history-title">Notificaciones programadas</h2>
-    </div>
-    <div id="notifications-body">
-      <div class="empty-state" style="padding:40px 0"><span class="empty-emoji">⏳</span><p>Cargando…</p></div>
-    </div>
-  </div>
 
   <script src="/static/js/app.js?v={{ cache_bust }}"></script>
 </body>

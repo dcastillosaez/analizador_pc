@@ -1,9 +1,10 @@
 """Historial de rendimiento en SQLite — snapshots automáticos cada 5 min."""
-import os
 import sqlite3
 from datetime import datetime, timedelta
 
-_DB = os.path.join(os.path.dirname(__file__), '..', 'perf_history.db')
+from ._storage import db_path
+
+_DB = db_path('perf_history.db')
 
 
 def _open() -> sqlite3.Connection:

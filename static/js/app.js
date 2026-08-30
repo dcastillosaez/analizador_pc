@@ -102,18 +102,13 @@ function navigateTo(id) {
   if (id === 'overview') {
     _hideHistorySection();
     renderOverview();
-  } else if (id === 'history') {
+  } else if (_SPECIAL_VIEWS[id]) {
+    // Ocultar las cinco antes de mostrar la pedida: si no, al pasar de una a
+    // otra se quedaban apiladas una debajo de la anterior.
+    _hideHistorySection();
     _returnCardsToPool();
     _hideContentArea();
-    showHistoryView();
-  } else if (id === 'perf-history') {
-    _returnCardsToPool(); _hideContentArea(); showPerfHistoryView();
-  } else if (id === 'diskmap') {
-    _returnCardsToPool(); _hideContentArea(); showDiskmapSection();
-  } else if (id === 'duplicates') {
-    _returnCardsToPool(); _hideContentArea(); showDuplicatesSection();
-  } else if (id === 'notifications') {
-    _returnCardsToPool(); _hideContentArea(); showNotificationsSection();
+    _SPECIAL_VIEWS[id]();
   } else {
     _hideHistorySection();
     showModuleView(id);
@@ -125,6 +120,15 @@ function navigateTo(id) {
 
 const _SPECIAL_SECTIONS = ['history-section','perf-history-section',
   'diskmap-section','duplicates-section','notifications-section'];
+
+// Vistas que no son una card: cada una vive en su propia sección del layout.
+const _SPECIAL_VIEWS = {
+  'history':       () => showHistoryView(),
+  'perf-history':  () => showPerfHistoryView(),
+  'diskmap':       () => showDiskmapSection(),
+  'duplicates':    () => showDuplicatesSection(),
+  'notifications': () => showNotificationsSection(),
+};
 
 function _hideHistorySection() {
   _SPECIAL_SECTIONS.forEach(id => { const el = _id(id); if (el) el.classList.add('hidden'); });

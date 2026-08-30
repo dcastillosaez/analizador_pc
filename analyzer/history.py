@@ -1,10 +1,12 @@
 """Historial de escaneos en SQLite."""
 import json
-import os
 import sqlite3
 from datetime import datetime
 
-_DB = os.path.join(os.path.dirname(__file__), '..', 'history.db')
+from ._storage import db_path
+
+# Se resuelve al importar: migra la base antigua del directorio del proyecto.
+_DB = db_path('history.db')
 
 
 def _open() -> sqlite3.Connection:

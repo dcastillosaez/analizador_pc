@@ -5,7 +5,9 @@ import tempfile
 import time
 from datetime import datetime
 
-_DB = os.path.join(os.path.dirname(__file__), '..', 'benchmark.db')
+from ._storage import db_path
+
+_DB = db_path('benchmark.db')
 
 
 # ── Persistencia ──────────────────────────────────────────────────────────────
