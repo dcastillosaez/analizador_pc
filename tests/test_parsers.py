@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from analyzer import _shell, _text, maintenance, services, updates, wifi  # noqa: E402
+from analyzer import _shell, _text, maintenance, network, services, updates, wifi  # noqa: E402
 from analyzer.certs import _common_name  # noqa: E402
 
 
@@ -540,3 +540,84 @@ class TestUbicacionDeDatos:
         monkeypatch.setattr(_storage, "data_dir", lambda: destino_dir)
         monkeypatch.setattr(_storage, "_rutas_antiguas", lambda nombre: [tmp_path / "no_existe.db"])
         assert _storage.db_path("nueva.db") == str(destino_dir / "nueva.db")
+
+
+# ── Clasificación de puertos en escucha ───────────────────────────────────────
+
+def _e(ip, port, proc="algo.exe", pid=1234):
+    return {"ip": ip, "port": port, "pid": pid, "proc": proc}
+
+
+class TestClasificarPuertos:
+    def test_loopback_no_es_aviso(self):
+        items = network._classify_ports([_e("127.0.0.1", 8765, "PCGuardian.exe")])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_loopback_ipv6_tampoco(self):
+        items = network._classify_ports([_e("::1", 7679, "GoogleDriveFS.exe")])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_loopback_se_resume_en_un_solo_item(self):
+        entries = [_e("127.0.0.1", p) for p in (5396, 6327, 13031, 22112)]
+        items = network._classify_ports(entries)
+        assert len(items) == 1
+        assert "4" in items[0]["value"]
+
+    def test_escucha_en_todas_las_interfaces_es_aviso(self):
+        items = network._classify_ports([_e("0.0.0.0", 4444, "raro.exe")])
+        avisos = [i for i in items if i["status"] == "warning"]
+        assert len(avisos) == 1
+        assert "4444" in avisos[0]["name"]
+
+    def test_ip_de_lan_tambien_es_aviso(self):
+        items = network._classify_ports([_e("192.168.1.50", 4444)])
+        assert any(i["status"] == "warning" for i in items)
+
+    def test_puerto_seguro_expuesto_no_avisa(self):
+        items = network._classify_ports([_e("0.0.0.0", 443, "svchost.exe")])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_puerto_efimero_expuesto_no_avisa(self):
+        items = network._classify_ports([_e("0.0.0.0", 51000)])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_sin_nada_en_escucha_devuelve_ok(self):
+        items = network._classify_ports([])
+        assert len(items) == 1 and items[0]["status"] == "ok"
+
+    def test_mezcla_separa_loopback_de_expuesto(self):
+        items = network._classify_ports([
+            _e("127.0.0.1", 8765, "PCGuardian.exe"),
+            _e("0.0.0.0", 4444, "raro.exe"),
+        ])
+        avisos = [i for i in items if i["status"] == "warning"]
+        assert len(avisos) == 1 and "4444" in avisos[0]["name"]
+        assert any(i["status"] == "ok" and "local" in i["name"].lower() for i in items)
+
+    def test_el_aviso_no_dice_conexiones_externas_de_un_loopback(self):
+        items = network._classify_ports([_e("127.0.0.1", 6327, "SteelSeriesGGEZ.exe")])
+        assert "externas" not in items[0]["message"].lower()
+
+    def test_tope_de_ocho_avisos(self):
+        entries = [_e("0.0.0.0", 4000 + i) for i in range(12)]
+        avisos = [i for i in network._classify_ports(entries) if i["status"] == "warning"]
+        assert len(avisos) == 8
+
+    def test_mismo_puerto_en_ipv4_e_ipv6_es_un_solo_aviso(self):
+        items = network._classify_ports([
+            _e("0.0.0.0", 3354, "node.exe"),
+            _e("::", 3354, "node.exe"),
+        ])
+        avisos = [i for i in items if i["status"] == "warning"]
+        assert len(avisos) == 1
+
+    def test_mismo_puerto_distinto_proceso_son_dos_avisos(self):
+        items = network._classify_ports([
+            _e("0.0.0.0", 3354, "node.exe"),
+            _e("0.0.0.0", 3354, "otro.exe"),
+        ])
+        assert len([i for i in items if i["status"] == "warning"]) == 2
+
+    def test_netbios_y_wsd_son_estandar_de_windows(self):
+        items = network._classify_ports([_e("0.0.0.0", 139), _e("::", 5357)])
+        assert all(i["status"] == "ok" for i in items)
