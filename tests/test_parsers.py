@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from analyzer import _shell, _text, maintenance, services, updates, wifi  # noqa: E402
+from analyzer import _shell, _smbios, _text, bios, defaults, maintenance, network, services, updates, wifi  # noqa: E402
 from analyzer.certs import _common_name  # noqa: E402
 
 
@@ -540,3 +540,420 @@ class TestUbicacionDeDatos:
         monkeypatch.setattr(_storage, "data_dir", lambda: destino_dir)
         monkeypatch.setattr(_storage, "_rutas_antiguas", lambda nombre: [tmp_path / "no_existe.db"])
         assert _storage.db_path("nueva.db") == str(destino_dir / "nueva.db")
+
+
+# ── Clasificación de puertos en escucha ───────────────────────────────────────
+
+def _e(ip, port, proc="algo.exe", pid=1234):
+    return {"ip": ip, "port": port, "pid": pid, "proc": proc}
+
+
+class TestClasificarPuertos:
+    def test_loopback_no_es_aviso(self):
+        items = network._classify_ports([_e("127.0.0.1", 8765, "PCGuardian.exe")])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_loopback_ipv6_tampoco(self):
+        items = network._classify_ports([_e("::1", 7679, "GoogleDriveFS.exe")])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_loopback_se_resume_en_un_solo_item(self):
+        entries = [_e("127.0.0.1", p) for p in (5396, 6327, 13031, 22112)]
+        items = network._classify_ports(entries)
+        assert len(items) == 1
+        assert "4" in items[0]["value"]
+
+    def test_escucha_en_todas_las_interfaces_es_aviso(self):
+        items = network._classify_ports([_e("0.0.0.0", 4444, "raro.exe")])
+        avisos = [i for i in items if i["status"] == "warning"]
+        assert len(avisos) == 1
+        assert "4444" in avisos[0]["name"]
+
+    def test_ip_de_lan_tambien_es_aviso(self):
+        items = network._classify_ports([_e("192.168.1.50", 4444)])
+        assert any(i["status"] == "warning" for i in items)
+
+    def test_puerto_seguro_expuesto_no_avisa(self):
+        items = network._classify_ports([_e("0.0.0.0", 443, "svchost.exe")])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_puerto_efimero_expuesto_no_avisa(self):
+        items = network._classify_ports([_e("0.0.0.0", 51000)])
+        assert all(i["status"] == "ok" for i in items)
+
+    def test_sin_nada_en_escucha_devuelve_ok(self):
+        items = network._classify_ports([])
+        assert len(items) == 1 and items[0]["status"] == "ok"
+
+    def test_mezcla_separa_loopback_de_expuesto(self):
+        items = network._classify_ports([
+            _e("127.0.0.1", 8765, "PCGuardian.exe"),
+            _e("0.0.0.0", 4444, "raro.exe"),
+        ])
+        avisos = [i for i in items if i["status"] == "warning"]
+        assert len(avisos) == 1 and "4444" in avisos[0]["name"]
+        assert any(i["status"] == "ok" and "local" in i["name"].lower() for i in items)
+
+    def test_el_aviso_no_dice_conexiones_externas_de_un_loopback(self):
+        items = network._classify_ports([_e("127.0.0.1", 6327, "SteelSeriesGGEZ.exe")])
+        assert "externas" not in items[0]["message"].lower()
+
+    def test_tope_de_ocho_avisos(self):
+        entries = [_e("0.0.0.0", 4000 + i) for i in range(12)]
+        avisos = [i for i in network._classify_ports(entries) if i["status"] == "warning"]
+        assert len(avisos) == 8
+
+    def test_mismo_puerto_en_ipv4_e_ipv6_es_un_solo_aviso(self):
+        items = network._classify_ports([
+            _e("0.0.0.0", 3354, "node.exe"),
+            _e("::", 3354, "node.exe"),
+        ])
+        avisos = [i for i in items if i["status"] == "warning"]
+        assert len(avisos) == 1
+
+    def test_mismo_puerto_distinto_proceso_son_dos_avisos(self):
+        items = network._classify_ports([
+            _e("0.0.0.0", 3354, "node.exe"),
+            _e("0.0.0.0", 3354, "otro.exe"),
+        ])
+        assert len([i for i in items if i["status"] == "warning"]) == 2
+
+    def test_netbios_y_wsd_son_estandar_de_windows(self):
+        items = network._classify_ports([_e("0.0.0.0", 139), _e("::", 5357)])
+        assert all(i["status"] == "ok" for i in items)
+
+
+# ── Aplicaciones predeterminadas ──────────────────────────────────────────────
+
+class TestExeDelComando:
+    def test_ruta_entre_comillas_con_espacios(self):
+        cmd = r'"C:\Program Files\Google\Chrome\chrome.exe" --single-argument %1'
+        assert defaults._exe_from_command(cmd) == r"C:\Program Files\Google\Chrome\chrome.exe"
+
+    def test_ruta_sin_comillas(self):
+        assert defaults._exe_from_command(r"C:\Windows\notepad.exe %1") == r"C:\Windows\notepad.exe"
+
+    def test_variables_de_entorno_se_expanden(self):
+        exe = defaults._exe_from_command(r'"%SystemRoot%\system32\notepad.exe" %1')
+        assert exe.lower().endswith("notepad.exe") and "%SystemRoot%" not in exe
+
+    def test_comando_vacio(self):
+        assert defaults._exe_from_command("") == ""
+
+    def test_rundll32_conserva_el_ejecutable(self):
+        cmd = r'"C:\Windows\system32\rundll32.exe" shell32.dll,OpenAs_RunDLL %1'
+        assert defaults._exe_from_command(cmd).lower().endswith("rundll32.exe")
+
+
+class TestNombreLegible:
+    def test_usa_el_nombre_del_ejecutable(self):
+        assert defaults._friendly_name("LoQueSea", r"C:\x\slack.exe") == "Slack"
+
+    def test_progid_conocido_gana_al_ejecutable(self):
+        assert defaults._friendly_name("Acrobat.Document.DC", r"C:\x\acrobat.exe") == "Adobe Acrobat"
+
+    def test_sin_ejecutable_cae_al_progid(self):
+        assert defaults._friendly_name("AppX4hxtad77", "") == "AppX4hxtad77"
+
+    def test_sin_nada_devuelve_marcador(self):
+        assert defaults._friendly_name("", "") == "Sin asignar"
+
+
+class TestEvaluarAsociacion:
+    def test_programa_normal_es_ok(self):
+        assert defaults._evaluate("ChromeHTML", r"C:\Program Files\Google\chrome.exe")[0] == "ok"
+
+    def test_sin_asociacion_avisa(self):
+        assert defaults._evaluate("", "")[0] == "warning"
+
+    def test_ejecutable_en_temp_es_peligroso(self):
+        assert defaults._evaluate("Raro", r"C:\Users\x\AppData\Local\Temp\raro.exe")[0] == "danger"
+
+    def test_ejecutable_en_descargas_es_peligroso(self):
+        assert defaults._evaluate("Raro", r"C:\Users\x\Downloads\instalador.exe")[0] == "danger"
+
+    def test_appx_del_store_sin_ruta_es_ok(self):
+        assert defaults._evaluate("AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723", "")[0] == "ok"
+
+    def test_programa_instalado_en_appdata_es_ok(self):
+        assert defaults._evaluate("Slack", r"C:\Users\x\AppData\Local\slack\slack.exe")[0] == "ok"
+
+
+    def test_progid_que_no_resuelve_a_ninguna_app_avisa(self):
+        st, motivo = defaults._evaluate("AppXydk58wgm44se4b399557yyyj1w7mbmvd", "", resuelto=False)
+        assert st == "warning" and "registrada" in motivo.lower()
+
+    def test_progid_que_si_resuelve_no_avisa(self):
+        assert defaults._evaluate("AppXalgo", "", resuelto=True)[0] == "ok"
+
+
+class TestUriDeAjustes:
+    def test_sin_app_abre_la_pagina_general(self):
+        assert defaults._settings_uri("") == "ms-settings:defaultapps"
+
+    def test_con_app_apunta_a_su_ficha(self):
+        assert defaults._settings_uri("Firefox") == "ms-settings:defaultapps?registeredAppUser=Firefox"
+
+    def test_escapa_espacios(self):
+        uri = defaults._settings_uri("Adobe Acrobat")
+        assert " " not in uri and uri.endswith("Adobe%20Acrobat")
+
+    def test_no_permite_arrastrar_parametros_extra(self):
+        uri = defaults._settings_uri("x&cmd=calc.exe")
+        assert uri.startswith("ms-settings:defaultapps?registeredAppUser=") and "&" not in uri
+
+
+class TestNombreDeAppDelStore:
+    def test_extrae_el_paquete_del_aumid(self):
+        assert defaults._package_display("Microsoft.Windows.Photos_8wekyb3d8bbwe!App") == "Fotos"
+
+    def test_paquete_desconocido_pierde_el_prefijo_y_el_hash(self):
+        assert defaults._package_display("Contoso.SuperEditor_abcd1234!App") == "SuperEditor"
+
+    def test_paquete_de_microsoft_desconocido(self):
+        assert defaults._package_display("Microsoft.CosaRara_8wekyb3d8bbwe!App") == "CosaRara"
+
+    def test_cadena_vacia(self):
+        assert defaults._package_display("") == ""
+
+    def test_recurso_indirecto_no_resuelto_no_se_muestra_crudo(self):
+        crudo = "@{Microsoft.Windows.Photos_2026.1_x64__8wekyb3d8bbwe?ms-resource://X/Y}"
+        assert defaults._clean_resource_string(crudo) == ""
+
+    def test_nombre_normal_se_respeta(self):
+        assert defaults._clean_resource_string("Fotos") == "Fotos"
+
+
+class TestAsociacionHuerfana:
+    def test_progid_muerto_no_muestra_el_hash_como_aplicacion(self, monkeypatch):
+        monkeypatch.setattr(defaults, "_read_command", lambda progid: "")
+        monkeypatch.setattr(defaults, "_appx_name", lambda progid: "")
+        item = defaults._asociacion("Enlaces de correo", "AppXydk58wgm44se4b399557yyyj1w7mbmvd")
+        assert item["status"] == "warning"
+        assert item["value"] == "Sin aplicación válida"
+        assert item["app"] == ""          # el botón abre la página general
+        assert "AppXydk58" in item["detail"]   # el ProgId sigue visible como dato técnico
+
+
+# ── Parser SMBIOS ─────────────────────────────────────────────────────────────
+
+def _estructura(tipo, handle, campos, cadenas):
+    """Construye una entrada SMBIOS: cabecera + campos + área de texto."""
+    cuerpo = bytes([tipo, 4 + len(campos)]) + handle.to_bytes(2, "little") + bytes(campos)
+    if cadenas:
+        texto = b"".join(c.encode("latin-1") + bytes([0]) for c in cadenas) + bytes([0])
+    else:
+        texto = bytes([0, 0])
+    return cuerpo + texto
+
+
+class TestParserSmbios:
+    def test_lee_una_estructura_con_cadenas(self):
+        data = _estructura(0, 1, [0x01, 0x02], ["AMI", "0903"])
+        t = _smbios.parse_tables(data)
+        assert t[0][0].texto(4) == "AMI"
+        assert t[0][0].texto(5) == "0903"
+
+    def test_una_estructura_sin_cadenas_no_rompe_el_recorrido(self):
+        # el fallo clásico: saltar un solo nulo desincroniza y se pierde el resto
+        data = _estructura(4, 1, [0, 0]) if False else (
+            _estructura(4, 1, [0, 0], []) + _estructura(17, 2, [0x01], ["Corsair"]))
+        t = _smbios.parse_tables(data)
+        assert 4 in t and 17 in t
+        assert t[17][0].texto(4) == "Corsair"
+
+    def test_varias_del_mismo_tipo_se_agrupan(self):
+        data = (_estructura(17, 1, [0x01], ["A"]) +
+                _estructura(17, 2, [0x01], ["B"]))
+        t = _smbios.parse_tables(data)
+        assert [e.texto(4) for e in t[17]] == ["A", "B"]
+
+    def test_para_en_la_marca_de_fin(self):
+        data = (_estructura(0, 1, [0x01], ["AMI"]) +
+                _estructura(127, 2, [], []) +
+                _estructura(17, 3, [0x01], ["fantasma"]))
+        t = _smbios.parse_tables(data)
+        assert 17 not in t
+
+    def test_tabla_vacia(self):
+        assert _smbios.parse_tables(b"") == {}
+
+    def test_longitud_imposible_no_cuelga(self):
+        assert _smbios.parse_tables(bytes([4, 2, 0, 0, 0, 0])) == {}
+
+    def test_indice_de_cadena_fuera_de_rango(self):
+        data = _estructura(0, 1, [0x09], ["solo una"])
+        assert _smbios.parse_tables(data)[0][0].texto(4) == ""
+
+    def test_campos_mas_alla_del_final_devuelven_cero(self):
+        e = _smbios.parse_tables(_estructura(0, 1, [0x01], ["AMI"]))[0][0]
+        assert e.byte(99) == 0 and e.word(99) == 0 and e.qword(99) == 0
+
+    def test_word_y_qword_leen_little_endian(self):
+        e = _smbios.parse_tables(_estructura(17, 1, [0x40, 0x08] + [0] * 6, []))[17][0]
+        assert e.word(4) == 0x0840
+
+
+# ── Comprobaciones de configuración de BIOS/UEFI ──────────────────────────────
+
+def _mod(slot, part="CMK16GX4M1B3000C15", cap=16, speed=2133, conf=2133, fab="Corsair"):
+    return {"slot": slot, "fabricante": fab, "part": part,
+            "capacidad_gb": cap, "speed": speed, "configurada": conf}
+
+
+class TestVelocidadNominal:
+    def test_corsair(self):
+        assert bios._velocidad_nominal("CMK16GX4M1B3000C15") == 3000
+
+    def test_gskill(self):
+        assert bios._velocidad_nominal("F4-3200C16-8GVKB") == 3200
+
+    def test_kingston(self):
+        assert bios._velocidad_nominal("KHX3200C16D4/8G") == 3200
+
+    def test_ddr5(self):
+        assert bios._velocidad_nominal("CMK32GX5M2B6000C36") == 6000
+
+    def test_sin_velocidad_reconocible(self):
+        assert bios._velocidad_nominal("M378A1K43CB2-CRC") is None
+
+    def test_ignora_numeros_fuera_de_rango(self):
+        assert bios._velocidad_nominal("ABC1234XYZ") is None
+
+    def test_part_number_vacio(self):
+        assert bios._velocidad_nominal("") is None
+
+
+class TestMemoria:
+    def test_xmp_desactivado_por_part_number(self):
+        items = bios._check_memoria([_mod("ChannelA-DIMM2"), _mod("ChannelB-DIMM2")])
+        xmp = [i for i in items if "XMP" in i["name"] or "velocidad" in i["name"].lower()]
+        assert xmp and xmp[0]["status"] == "warning"
+        assert "3000" in xmp[0]["message"] and "2133" in xmp[0]["message"]
+
+    def test_xmp_activo_no_avisa(self):
+        mods = [_mod("ChannelA-DIMM2", speed=3000, conf=3000),
+                _mod("ChannelB-DIMM2", speed=3000, conf=3000)]
+        assert all(i["status"] == "ok" for i in bios._check_memoria(mods))
+
+    def test_spd_mayor_que_configurada_tambien_avisa(self):
+        mods = [_mod("ChannelA-DIMM2", part="DESCONOCIDO", speed=3200, conf=2400)]
+        assert any(i["status"] == "warning" for i in bios._check_memoria(mods))
+
+    def test_dos_modulos_en_el_mismo_canal_es_single_channel(self):
+        mods = [_mod("ChannelA-DIMM1", speed=3000, conf=3000),
+                _mod("ChannelA-DIMM2", speed=3000, conf=3000)]
+        canal = [i for i in bios._check_memoria(mods) if "canal" in i["name"].lower()]
+        assert canal and canal[0]["status"] == "warning"
+
+    def test_modulos_repartidos_son_dual_channel(self):
+        mods = [_mod("ChannelA-DIMM2", speed=3000, conf=3000),
+                _mod("ChannelB-DIMM2", speed=3000, conf=3000)]
+        canal = [i for i in bios._check_memoria(mods) if "canal" in i["name"].lower()]
+        assert canal and canal[0]["status"] == "ok"
+
+    def test_un_solo_modulo_no_se_juzga_como_single_channel(self):
+        mods = [_mod("ChannelA-DIMM2", speed=3000, conf=3000)]
+        canal = [i for i in bios._check_memoria(mods) if "canal" in i["name"].lower()]
+        assert not canal or canal[0]["status"] == "ok"
+
+    def test_sin_modulos_no_lanza(self):
+        assert isinstance(bios._check_memoria([]), list)
+
+
+class TestNucleos:
+    def test_todos_los_nucleos_activos(self):
+        assert bios._check_nucleos({"nucleos": 8, "habilitados": 8, "hilos": 8})["status"] == "ok"
+
+    def test_nucleos_deshabilitados_en_la_bios(self):
+        item = bios._check_nucleos({"nucleos": 8, "habilitados": 4, "hilos": 4})
+        assert item["status"] == "warning" and "4" in item["message"] and "8" in item["message"]
+
+    def test_datos_ausentes_no_inventan_aviso(self):
+        assert bios._check_nucleos({"nucleos": 0, "habilitados": 0, "hilos": 0})["status"] == "ok"
+
+
+class TestSlotsPcie:
+    def test_tarjeta_en_slot_estrecho_con_uno_ancho_libre(self):
+        slots = [{"nombre": "PCIEX16_1", "ancho": "x16", "ocupado": False},
+                 {"nombre": "PCIEX16_2", "ancho": "x8",  "ocupado": True}]
+        item = bios._check_slots(slots)
+        assert item["status"] == "warning"
+        assert "PCIEX16_1" in item["message"] and "PCIEX16_2" in item["message"]
+
+    def test_tarjeta_ya_en_el_slot_mas_ancho(self):
+        slots = [{"nombre": "PCIEX16_1", "ancho": "x16", "ocupado": True},
+                 {"nombre": "PCIEX16_2", "ancho": "x8",  "ocupado": False}]
+        assert bios._check_slots(slots)["status"] == "ok"
+
+    def test_no_avisa_por_slots_de_una_linea(self):
+        slots = [{"nombre": "PCIEX16_1", "ancho": "x16", "ocupado": True},
+                 {"nombre": "PCIEX1_1",  "ancho": "x1",  "ocupado": True}]
+        assert bios._check_slots(slots)["status"] == "ok"
+
+    def test_sin_slots_ocupados(self):
+        assert bios._check_slots([])["status"] == "ok"
+
+
+class TestAntiguedadBios:
+    def test_bios_reciente(self):
+        assert bios._check_bios_date("03/18/2026", hoy=(2026, 8, 30))["status"] == "ok"
+
+    def test_bios_de_hace_siete_anos(self):
+        item = bios._check_bios_date("03/18/2019", hoy=(2026, 8, 30))
+        assert item["status"] == "warning" and "7" in item["value"]
+
+    def test_fecha_ilegible_no_lanza(self):
+        assert bios._check_bios_date("no es fecha", hoy=(2026, 8, 30))["status"] == "ok"
+
+    def test_fecha_vacia(self):
+        assert bios._check_bios_date("", hoy=(2026, 8, 30))["status"] == "ok"
+
+
+class TestExtractoresSmbios:
+    def _t17(self, slot, fab, part, tam=16384, speed=2133, conf=2133):
+        """Un Memory Device. SMBIOS no admite cadenas vacías: van con índice 0."""
+        cadenas = [c for c in (slot, fab, part) if c]
+        campos = bytearray(0x20)
+        campos[0x0C - 4:0x0E - 4] = tam.to_bytes(2, "little")
+        campos[0x15 - 4:0x17 - 4] = speed.to_bytes(2, "little")
+        campos[0x20 - 4:0x22 - 4] = conf.to_bytes(2, "little")
+        campos[0x10 - 4] = 1 if slot else 0
+        campos[0x17 - 4] = cadenas.index(fab) + 1 if fab else 0
+        campos[0x1A - 4] = cadenas.index(part) + 1 if part else 0
+        return _estructura(17, 1, list(campos) + [0, 0], cadenas)
+
+    def test_lee_modulos_y_descarta_zocalos_vacios(self):
+        vacio = self._t17("ChannelA-DIMM1", "", "", tam=0)
+        lleno = self._t17("ChannelB-DIMM2", "Corsair", "CMK16GX4M1B3000C15")
+        mods = bios._leer_modulos(_smbios.parse_tables(vacio + lleno))
+        assert len(mods) == 1
+        assert mods[0]["slot"] == "ChannelB-DIMM2"
+        assert mods[0]["part"] == "CMK16GX4M1B3000C15"
+        assert mods[0]["capacidad_gb"] == 16
+
+    def test_lee_nucleos_de_la_cpu(self):
+        campos = bytearray(0x24)
+        campos[0x05 - 4] = 3          # ProcessorType: central processor
+        campos[0x23 - 4] = 8          # CoreCount
+        campos[0x24 - 4] = 6          # CoreEnabled
+        campos[0x25 - 4] = 6          # ThreadCount  (fuera de rango -> se amplía abajo)
+        datos = _estructura(4, 1, list(campos) + [6, 6], [])
+        cpu = bios._leer_cpu(_smbios.parse_tables(datos))
+        assert cpu["nucleos"] == 8 and cpu["habilitados"] == 6
+
+    def test_lee_slots_con_su_ancho_y_ocupacion(self):
+        campos = [1, 0, 13, 4] + [0] * 12      # designación, tipo, x16, ocupado
+        datos = _estructura(9, 1, campos, ["PCIEX16_1"])
+        slots = bios._leer_slots(_smbios.parse_tables(datos))
+        assert slots == [{"nombre": "PCIEX16_1", "ancho": "x16", "ocupado": True}]
+
+    def test_ignora_slots_de_ancho_desconocido(self):
+        datos = _estructura(9, 1, [1, 0, 99, 3] + [0] * 12, ["RARO"])
+        assert bios._leer_slots(_smbios.parse_tables(datos)) == []
+
+    def test_sin_tablas_los_extractores_devuelven_vacio(self):
+        assert bios._leer_modulos({}) == []
+        assert bios._leer_cpu({}) == {}
+        assert bios._leer_slots({}) == []
+        assert bios._leer_bios({}) == {}

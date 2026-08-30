@@ -46,6 +46,8 @@ const MODULE_META = {
   duplicates:       { label: 'Duplicados',   group: 'Herramientas',emoji: '📋', color: '#00cec9' },
   notifications:    { label: 'Notificaciones',group:'Herramientas',emoji: '🔔', color: '#e17055' },
   hardening:        { label: 'Protecciones',  group: 'Seguridad',  emoji: '🔐', color: '#fd79a8' },
+  defaults:         { label: 'Apps por defecto', group: 'Sistema', emoji: '🧩', color: '#a29bfe' },
+  bios:             { label: 'BIOS / UEFI',    group: 'Sistema', emoji: '🧠', color: '#fdcb6e' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -245,6 +247,8 @@ async function _triggerModuleScan(id) {
   if (id === 'software')       { if (typeof scanSoftware      === 'function') scanSoftware();      return; }
   if (id === 'firewall-rules') { if (typeof scanFirewallRules === 'function') scanFirewallRules(); return; }
   if (id === 'benchmark')      { if (typeof runBenchmark     === 'function') runBenchmark();      return; }
+  if (id === 'defaults')       { if (typeof scanDefaults     === 'function') scanDefaults();      return; }
+  if (id === 'bios')           { if (typeof scanBios         === 'function') scanBios();          return; }
 
   if (btn) {
     btn.disabled = true;
@@ -271,7 +275,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening', 'defaults', 'bios']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -391,6 +395,8 @@ const MODULE_CMDS = {
   processes:        ['psutil.process_iter(["pid","name","cpu_percent","memory_percent"])', 'proc.memory_info().rss', 'proc.terminate()'],
   dns:              ['Get-DnsClientServerAddress -AddressFamily IPv4', 'winreg HKLM\\SYSTEM\\...\\Dnscache\\EnableAutoDoh'],
   'firewall-rules': ['Get-NetFirewallRule -Enabled True | Where-Object {...} | ConvertTo-Json'],
+  bios:             ['GetSystemFirmwareTable(RSMB) — tabla SMBIOS/DMI', 'GetFirmwareEnvironmentVariable — variables UEFI', 'bcdedit /enum {current}'],
+  defaults:         ['winreg HKCU\...\Shell\Associations\UrlAssociations\http\UserChoice', 'winreg HKCU\...\Explorer\FileExts\.pdf\UserChoice', 'ms-settings:defaultapps'],
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
@@ -550,6 +556,14 @@ function renderCard(id, data) {
     body.innerHTML = renderBenchmark(data);
     const btnBench = document.getElementById('btn-benchmark');
     if (btnBench) btnBench.style.display = '';
+  } else if (id === 'bios') {
+    body.innerHTML = renderBios(data);
+    const btnBios = document.getElementById('btn-bios');
+    if (btnBios) btnBios.style.display = '';
+  } else if (id === 'defaults') {
+    body.innerHTML = renderDefaults(data);
+    const btnDef = document.getElementById('btn-defaults');
+    if (btnDef) btnDef.style.display = '';
   } else if (id === 'startup') {
     body.innerHTML = renderStartup(data);
   } else {
@@ -1425,6 +1439,18 @@ function statusIcon(status) {
   return status === 'ok' ? '✓' : status === 'danger' ? '!' : '~';
 }
 
+
+/* Serializa un valor a literal JS seguro DENTRO de un atributo HTML.
+   JSON.stringify a secas mete comillas dobles que cierran el atributo
+   onclick="..." y dejan el handler roto: el clic no ejecuta nada. */
+function jsAttr(val) {
+  return JSON.stringify(val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function escHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -2080,7 +2106,7 @@ function renderProcesses(data) {
   const rows = data.items.map(item => {
     const icon     = statusIcon(item.status);
     const killBtn  = item.killable
-      ? `<button class="btn-kill" onclick="killProcess(${item.pid}, ${JSON.stringify(item.name)})">Terminar</button>`
+      ? `<button class="btn-kill" onclick="killProcess(${item.pid}, ${jsAttr(item.name)})">Terminar</button>`
       : '';
     return `
       <tr class="proc-row">
@@ -2159,7 +2185,7 @@ function renderHistoryView(scans) {
         <td class="hist-score" style="color:${scoreColor}">${score}</td>
         <td><div class="hist-dots">${dots}</div></td>
         <td style="display:flex;gap:6px;align-items:center">
-          <button class="btn-hist-compare" onclick="showCompare(${JSON.stringify(s).replace(/</g,'\\u003c')})">Comparar</button>
+          <button class="btn-hist-compare" onclick="showCompare(${jsAttr(s)})">Comparar</button>
           <button class="btn-hist-del" onclick="deleteHistoryScan(${s.id}, this)">Borrar</button>
         </td>
       </tr>`;
@@ -2303,7 +2329,7 @@ function renderSoftware(data) {
       <td class="soft-pub">${escHtml(item.publisher)}</td>
       <td class="soft-date">${escHtml(item.date)}</td>
       <td class="soft-size">${item.size_mb > 0 ? item.size_mb + ' MB' : '—'}</td>
-      <td><button class="btn-uninstall" onclick="uninstallSoftware(${JSON.stringify(item.name).replace(/</g,'\\u003c')}, this)">Desinstalar</button></td>
+      <td><button class="btn-uninstall" onclick="uninstallSoftware(${jsAttr(item.name)}, this)">Desinstalar</button></td>
     </tr>`).join('');
 
   return `
@@ -2361,7 +2387,7 @@ function renderStartup(data) {
     const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
     const canDisable = item.fix_name && item.value !== 'Sistema';
     const disableBtn = canDisable
-      ? `<button class="btn-quickfix" onclick="doDisableStartup(${JSON.stringify(item.fix_hive)},${JSON.stringify(item.fix_key)},${JSON.stringify(item.fix_name)},this)">✕ Deshabilitar</button>`
+      ? `<button class="btn-quickfix" onclick="doDisableStartup(${jsAttr(item.fix_hive)},${jsAttr(item.fix_key)},${jsAttr(item.fix_name)},this)">✕ Deshabilitar</button>`
       : '';
     return `
       <div class="item ${escHtml(item.status)}">
@@ -2425,10 +2451,10 @@ function renderDns(data) {
       const iface = item.interface;
       fixBtns = `
         <div class="dns-fix-bar">
-          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'1.1.1.1','1.0.0.1',this)">
+          <button class="btn-quickfix" onclick="doSetDns(${jsAttr(iface)},'1.1.1.1','1.0.0.1',this)">
             🔒 Cloudflare (1.1.1.1)
           </button>
-          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'8.8.8.8','8.8.4.4',this)">
+          <button class="btn-quickfix" onclick="doSetDns(${jsAttr(iface)},'8.8.8.8','8.8.4.4',this)">
             🔍 Google (8.8.8.8)
           </button>
         </div>`;
@@ -2493,7 +2519,7 @@ function renderFirewallRules(data) {
 
   const rows = data.items.map(item => {
     const icon = statusIcon(item.status);
-    const delBtn = `<button class="btn-kill" onclick="deleteFirewallRule(${JSON.stringify(item.rule_name).replace(/</g,'\\u003c')},this)">Eliminar</button>`;
+    const delBtn = `<button class="btn-kill" onclick="deleteFirewallRule(${jsAttr(item.rule_name)},this)">Eliminar</button>`;
     return `
       <tr class="proc-row">
         <td class="proc-icon">${icon}</td>
@@ -2747,7 +2773,7 @@ function renderDiskmapView(data) {
                fill="white" fill-opacity="0.9" pointer-events="none">${escHtml(node.name.slice(0, 20))}</text>`
       : '';
     const click = node.is_dir
-      ? `onclick="drillDown(${JSON.stringify(node.path).replace(/</g,'\\u003c')}, ${JSON.stringify(node.name).replace(/</g,'\\u003c')})" style="cursor:pointer"`
+      ? `onclick="drillDown(${jsAttr(node.path)}, ${jsAttr(node.name)})" style="cursor:pointer"`
       : '';
     return `
       <g ${click}>
@@ -2872,7 +2898,7 @@ function renderDuplicates(data) {
     }).join('');
 
     const delPaths = g.files.slice(1).map(f => f.path);
-    const delJson  = JSON.stringify(delPaths).replace(/</g, '\\u003c');
+    const delJson  = jsAttr(delPaths);
 
     return `
       <div class="dup-group" id="dup-group-${gi}">
@@ -3143,3 +3169,116 @@ async function elevateApp() {
 }
 
 document.addEventListener('DOMContentLoaded', checkAdmin);
+
+/* ── Aplicaciones predeterminadas ────────────────────────────────────────── */
+async function scanDefaults() {
+  const btn  = document.getElementById('btn-defaults');
+  const body = document.getElementById('body-defaults');
+  if (btn)  { btn.disabled = true; btn.textContent = 'Leyendo…'; }
+  if (body) body.innerHTML = `<div class="loading-state"><span class="spin-anim">🧩</span> Leyendo asociaciones del registro…</div>`;
+  try {
+    const data = await fetchModule('defaults');
+    renderCard('defaults', data);
+    scanResults['defaults'] = data;
+    updateNavDot('defaults', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Analizar'; }
+}
+
+function renderDefaults(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const btn = `<button class="btn-quickfix" onclick="openDefaultApps(${jsAttr(item.app || '')},this)">Cambiar en Configuración</button>`;
+    const detail = item.detail
+      ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${statusIcon(item.status)}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+          ${btn}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  const nota = `
+    <p class="module-note">
+      Windows firma cada asociación con un hash que solo él sabe calcular, así que
+      ningún programa externo puede cambiarla sin que el sistema la revierta.
+      El botón abre la pantalla de Configuración donde sí puedes hacerlo en dos clics.
+    </p>`;
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}${nota}`;
+}
+
+async function openDefaultApps(app, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Abriendo…'; }
+  try {
+    const res  = await fetch('/api/defaults/open-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app }),
+    });
+    const data = await res.json();
+    if (!data.ok) alert(data.msg);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Cambiar en Configuración'; }
+}
+
+/* ── BIOS / UEFI ─────────────────────────────────────────────────────────── */
+async function scanBios() {
+  const btn  = document.getElementById('btn-bios');
+  const body = document.getElementById('body-bios');
+  if (btn)  { btn.disabled = true; btn.textContent = 'Leyendo…'; }
+  if (body) body.innerHTML = `<div class="loading-state"><span class="spin-anim">🧠</span> Leyendo la tabla SMBIOS del firmware…</div>`;
+  try {
+    const data = await fetchModule('bios');
+    renderCard('bios', data);
+    scanResults['bios'] = data;
+    updateNavDot('bios', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Analizar'; }
+}
+
+function renderBios(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const detail = item.detail
+      ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${statusIcon(item.status)}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  const nota = `
+    <p class="module-note">
+      Todo esto se lee del firmware, no se toca. Las opciones del menú de la BIOS
+      se guardan cifradas en formato propietario de cada fabricante, así que no
+      hay forma de cambiarlas desde Windows: los ajustes que veas marcados se
+      corrigen entrando en la BIOS al arrancar (Supr o F2 según la placa).
+    </p>`;
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}${nota}`;
+}
