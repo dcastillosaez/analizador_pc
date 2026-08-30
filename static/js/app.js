@@ -1425,6 +1425,18 @@ function statusIcon(status) {
   return status === 'ok' ? '✓' : status === 'danger' ? '!' : '~';
 }
 
+
+/* Serializa un valor a literal JS seguro DENTRO de un atributo HTML.
+   JSON.stringify a secas mete comillas dobles que cierran el atributo
+   onclick="..." y dejan el handler roto: el clic no ejecuta nada. */
+function jsAttr(val) {
+  return JSON.stringify(val)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function escHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -2080,7 +2092,7 @@ function renderProcesses(data) {
   const rows = data.items.map(item => {
     const icon     = statusIcon(item.status);
     const killBtn  = item.killable
-      ? `<button class="btn-kill" onclick="killProcess(${item.pid}, ${JSON.stringify(item.name)})">Terminar</button>`
+      ? `<button class="btn-kill" onclick="killProcess(${item.pid}, ${jsAttr(item.name)})">Terminar</button>`
       : '';
     return `
       <tr class="proc-row">
@@ -2159,7 +2171,7 @@ function renderHistoryView(scans) {
         <td class="hist-score" style="color:${scoreColor}">${score}</td>
         <td><div class="hist-dots">${dots}</div></td>
         <td style="display:flex;gap:6px;align-items:center">
-          <button class="btn-hist-compare" onclick="showCompare(${JSON.stringify(s).replace(/</g,'\\u003c')})">Comparar</button>
+          <button class="btn-hist-compare" onclick="showCompare(${jsAttr(s)})">Comparar</button>
           <button class="btn-hist-del" onclick="deleteHistoryScan(${s.id}, this)">Borrar</button>
         </td>
       </tr>`;
@@ -2303,7 +2315,7 @@ function renderSoftware(data) {
       <td class="soft-pub">${escHtml(item.publisher)}</td>
       <td class="soft-date">${escHtml(item.date)}</td>
       <td class="soft-size">${item.size_mb > 0 ? item.size_mb + ' MB' : '—'}</td>
-      <td><button class="btn-uninstall" onclick="uninstallSoftware(${JSON.stringify(item.name).replace(/</g,'\\u003c')}, this)">Desinstalar</button></td>
+      <td><button class="btn-uninstall" onclick="uninstallSoftware(${jsAttr(item.name)}, this)">Desinstalar</button></td>
     </tr>`).join('');
 
   return `
@@ -2361,7 +2373,7 @@ function renderStartup(data) {
     const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
     const canDisable = item.fix_name && item.value !== 'Sistema';
     const disableBtn = canDisable
-      ? `<button class="btn-quickfix" onclick="doDisableStartup(${JSON.stringify(item.fix_hive)},${JSON.stringify(item.fix_key)},${JSON.stringify(item.fix_name)},this)">✕ Deshabilitar</button>`
+      ? `<button class="btn-quickfix" onclick="doDisableStartup(${jsAttr(item.fix_hive)},${jsAttr(item.fix_key)},${jsAttr(item.fix_name)},this)">✕ Deshabilitar</button>`
       : '';
     return `
       <div class="item ${escHtml(item.status)}">
@@ -2425,10 +2437,10 @@ function renderDns(data) {
       const iface = item.interface;
       fixBtns = `
         <div class="dns-fix-bar">
-          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'1.1.1.1','1.0.0.1',this)">
+          <button class="btn-quickfix" onclick="doSetDns(${jsAttr(iface)},'1.1.1.1','1.0.0.1',this)">
             🔒 Cloudflare (1.1.1.1)
           </button>
-          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'8.8.8.8','8.8.4.4',this)">
+          <button class="btn-quickfix" onclick="doSetDns(${jsAttr(iface)},'8.8.8.8','8.8.4.4',this)">
             🔍 Google (8.8.8.8)
           </button>
         </div>`;
@@ -2493,7 +2505,7 @@ function renderFirewallRules(data) {
 
   const rows = data.items.map(item => {
     const icon = statusIcon(item.status);
-    const delBtn = `<button class="btn-kill" onclick="deleteFirewallRule(${JSON.stringify(item.rule_name).replace(/</g,'\\u003c')},this)">Eliminar</button>`;
+    const delBtn = `<button class="btn-kill" onclick="deleteFirewallRule(${jsAttr(item.rule_name)},this)">Eliminar</button>`;
     return `
       <tr class="proc-row">
         <td class="proc-icon">${icon}</td>
@@ -2747,7 +2759,7 @@ function renderDiskmapView(data) {
                fill="white" fill-opacity="0.9" pointer-events="none">${escHtml(node.name.slice(0, 20))}</text>`
       : '';
     const click = node.is_dir
-      ? `onclick="drillDown(${JSON.stringify(node.path).replace(/</g,'\\u003c')}, ${JSON.stringify(node.name).replace(/</g,'\\u003c')})" style="cursor:pointer"`
+      ? `onclick="drillDown(${jsAttr(node.path)}, ${jsAttr(node.name)})" style="cursor:pointer"`
       : '';
     return `
       <g ${click}>
@@ -2872,7 +2884,7 @@ function renderDuplicates(data) {
     }).join('');
 
     const delPaths = g.files.slice(1).map(f => f.path);
-    const delJson  = JSON.stringify(delPaths).replace(/</g, '\\u003c');
+    const delJson  = jsAttr(delPaths);
 
     return `
       <div class="dup-group" id="dup-group-${gi}">
