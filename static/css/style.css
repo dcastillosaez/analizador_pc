@@ -2437,3 +2437,4 @@ body {
 .loading-state .spin-anim { display: inline-block; font-size: 1.3rem; }
 
 .c-defaults { background: linear-gradient(135deg, rgba(162,155,254,0.20), rgba(108,92,231,0.10)); }
+.c-bios { background: linear-gradient(135deg, rgba(253,203,110,0.20), rgba(225,112,85,0.10)); }

@@ -45,6 +45,7 @@ from analyzer.notifications import (enable_startup, disable_startup,
 from analyzer.hardening     import analyze_hardening
 from analyzer.restore       import create_restore_point, restore_status
 from analyzer.defaults      import analyze_defaults, open_default_apps_settings
+from analyzer.bios          import analyze_bios
 from analyzer._shell        import is_admin, relaunch_as_admin
 
 if getattr(sys, "frozen", False):
@@ -285,6 +286,10 @@ def scan_software():
 def do_uninstall():
     body = request.get_json(force=True, silent=True) or {}
     return jsonify(uninstall_software(body.get("name", "")))
+
+@app.route("/api/scan/bios")
+def scan_bios():
+    return jsonify(analyze_bios())
 
 @app.route("/api/scan/defaults")
 def scan_defaults():

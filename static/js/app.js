@@ -47,6 +47,7 @@ const MODULE_META = {
   notifications:    { label: 'Notificaciones',group:'Herramientas',emoji: '🔔', color: '#e17055' },
   hardening:        { label: 'Protecciones',  group: 'Seguridad',  emoji: '🔐', color: '#fd79a8' },
   defaults:         { label: 'Apps por defecto', group: 'Sistema', emoji: '🧩', color: '#a29bfe' },
+  bios:             { label: 'BIOS / UEFI',    group: 'Sistema', emoji: '🧠', color: '#fdcb6e' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -247,6 +248,7 @@ async function _triggerModuleScan(id) {
   if (id === 'firewall-rules') { if (typeof scanFirewallRules === 'function') scanFirewallRules(); return; }
   if (id === 'benchmark')      { if (typeof runBenchmark     === 'function') runBenchmark();      return; }
   if (id === 'defaults')       { if (typeof scanDefaults     === 'function') scanDefaults();      return; }
+  if (id === 'bios')           { if (typeof scanBios         === 'function') scanBios();          return; }
 
   if (btn) {
     btn.disabled = true;
@@ -273,7 +275,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening', 'defaults']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening', 'defaults', 'bios']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -393,6 +395,7 @@ const MODULE_CMDS = {
   processes:        ['psutil.process_iter(["pid","name","cpu_percent","memory_percent"])', 'proc.memory_info().rss', 'proc.terminate()'],
   dns:              ['Get-DnsClientServerAddress -AddressFamily IPv4', 'winreg HKLM\\SYSTEM\\...\\Dnscache\\EnableAutoDoh'],
   'firewall-rules': ['Get-NetFirewallRule -Enabled True | Where-Object {...} | ConvertTo-Json'],
+  bios:             ['GetSystemFirmwareTable(RSMB) — tabla SMBIOS/DMI', 'GetFirmwareEnvironmentVariable — variables UEFI', 'bcdedit /enum {current}'],
   defaults:         ['winreg HKCU\...\Shell\Associations\UrlAssociations\http\UserChoice', 'winreg HKCU\...\Explorer\FileExts\.pdf\UserChoice', 'ms-settings:defaultapps'],
 };
 
@@ -553,6 +556,10 @@ function renderCard(id, data) {
     body.innerHTML = renderBenchmark(data);
     const btnBench = document.getElementById('btn-benchmark');
     if (btnBench) btnBench.style.display = '';
+  } else if (id === 'bios') {
+    body.innerHTML = renderBios(data);
+    const btnBios = document.getElementById('btn-bios');
+    if (btnBios) btnBios.style.display = '';
   } else if (id === 'defaults') {
     body.innerHTML = renderDefaults(data);
     const btnDef = document.getElementById('btn-defaults');
@@ -3226,4 +3233,52 @@ async function openDefaultApps(app, btn) {
     alert('Error: ' + e.message);
   }
   if (btn) { btn.disabled = false; btn.textContent = 'Cambiar en Configuración'; }
+}
+
+/* ── BIOS / UEFI ─────────────────────────────────────────────────────────── */
+async function scanBios() {
+  const btn  = document.getElementById('btn-bios');
+  const body = document.getElementById('body-bios');
+  if (btn)  { btn.disabled = true; btn.textContent = 'Leyendo…'; }
+  if (body) body.innerHTML = `<div class="loading-state"><span class="spin-anim">🧠</span> Leyendo la tabla SMBIOS del firmware…</div>`;
+  try {
+    const data = await fetchModule('bios');
+    renderCard('bios', data);
+    scanResults['bios'] = data;
+    updateNavDot('bios', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Analizar'; }
+}
+
+function renderBios(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const detail = item.detail
+      ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${statusIcon(item.status)}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  const nota = `
+    <p class="module-note">
+      Todo esto se lee del firmware, no se toca. Las opciones del menú de la BIOS
+      se guardan cifradas en formato propietario de cada fabricante, así que no
+      hay forma de cambiarlas desde Windows: los ajustes que veas marcados se
+      corrigen entrando en la BIOS al arrancar (Supr o F2 según la placa).
+    </p>`;
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}${nota}`;
 }
