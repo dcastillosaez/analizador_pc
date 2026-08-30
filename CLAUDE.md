@@ -14,9 +14,18 @@ Herramienta de diagnóstico local para Windows 10/11. Flask en backend, SPA vani
 ```
 app.py                      Rutas Flask + thread perf recorder (cada 5 min)
 analyzer/
+  _shell.py                 Capa única de subprocess: CREATE_NO_WINDOW, decodificación
+                            utf-8/oem/cp1252/latin-1, PowerShell vía -EncodedCommand,
+                            timeouts sin excepciones, is_admin/relaunch_as_admin
+  _text.py                  Heurística compartida de nombres generados al azar
+                            (entropía + proporción de vocales, umbrales calibrados)
   hardware.py               CPU, RAM, disco — psutil
   startup.py                Claves Run del registro — winreg; incluye fix_hive/fix_key/fix_name
-  security.py               Procesos sospechosos, entropía de Shannon
+  security.py               Procesos sospechosos: ruta + firma Authenticode
+  signatures.py             Get-AuthenticodeSignature por lotes, con caché
+  hardening.py              BitLocker, Secure Boot, TPM, Defender, ransomware, UAC,
+                            SmartScreen y puntos de restauración
+  restore.py                Crear punto de restauración y consultar su estado
   drivers.py                WMI Win32_PnPSignedDriver + winreg Uninstall
   protection.py             Antivirus (CIM) + Firewall (netsh), paralelo
   network.py                Puertos abiertos (psutil) + archivo hosts
@@ -39,6 +48,11 @@ analyzer/
   quickfix.py               Acciones rápidas: plan energía, deshabilitar startup, telemetría
   history.py                Historial de escaneos en SQLite (save/list/delete)
   perf_history.py           Snapshots de rendimiento en SQLite — record/get_history
+  benchmark.py              CPU (criba de primos) + disco R/W, historial en SQLite
+  diskmap.py                Tamaño de carpetas para el treemap
+  duplicates.py             Archivos duplicados por hash
+  notifications.py          Escaneo silencioso al arrancar + toast
+tests/test_parsers.py       Tests de parsers y heurísticas contra salidas fijadas
 templates/index.html        SPA: sidebar + topbar + content-area + secciones history/perf-history
 static/css/style.css        Dark theme + light theme; sin frameworks CSS externos
 static/js/app.js            Vanilla JS — navegación, scan global/individual, renders por módulo
@@ -90,6 +104,19 @@ por_implementar.md          Backlog con estado actualizado (✓ = implementado)
 | POST | `/api/quickfix/disable-startup` | Elimina entrada del registro Run (**escritura**) |
 | POST | `/api/quickfix/telemetry-off` | Desactiva telemetría Windows (**escritura**) |
 
+### Añadidos
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/scan/hardening` | BitLocker, Secure Boot, TPM, Defender, UAC, SmartScreen |
+| GET | `/api/status/admin` | Si la app corre elevada |
+| GET | `/api/restore/status` | Protección del sistema y último punto |
+| POST | `/api/admin/elevate` | Relanza la app con UAC (**escritura**) |
+| POST | `/api/restore/create` | Crea un punto de restauración (**escritura**) |
+
+`/api/driver/uninstall` acepta `restore_point: true` en el cuerpo para crear un
+punto de restauración antes, y devuelve en `restore` qué pasó con él.
+
 ## Esquema JSON estándar de respuesta
 
 Todos los módulos de escaneo devuelven:
@@ -117,7 +144,10 @@ Todos los módulos de escaneo devuelven:
 - **Overview:** grid de tiles con estado de cada módulo. Clic en tile → vista de módulo.
 - **Vista de módulo:** barra con botón "← Resumen" y botón "Analizar módulo".
 - **Sidebar:** colapsable a 64 px (solo iconos). Cada item tiene un dot de estado.
-- **Escaneo global:** botón "Escanear Sistema" — ejecuta todos los módulos en secuencia.
+- **Escaneo global:** botón "Escanear Sistema" — ejecuta los módulos con un pool de
+  4 en paralelo (`SCAN_CONCURRENCY` en `app.js`).
+- **Aviso de privilegios:** banner bajo la topbar cuando la app no corre elevada,
+  con botón de reinicio por UAC.
 - **Historial:** sección especial (no card) — tabla de escaneos pasados con comparador.
 - **Tendencias:** sección especial — sparklines SVG de CPU/RAM/disco últimas 24 h.
 
@@ -131,3 +161,27 @@ Todos los módulos de escaneo devuelven:
 - Todas las operaciones de escritura requieren confirmación explícita del usuario en la UI.
 - No añadas dependencias externas sin actualizar `requirements.txt` y este fichero.
 - El thread `_perf_recorder` en `app.py` guarda un snapshot cada 300 s (5 min). Solo arranca con `__name__ == '__main__'`.
+
+## Normas añadidas
+
+- **Nunca llames a `subprocess` directamente desde un módulo**: usa `run`, `run_ps` o
+  `run_ps_json` de `analyzer/_shell.py`. Son las que ponen `CREATE_NO_WINDOW` (sin eso
+  el .exe compilado abre una ventana negra por cada llamada), resuelven la codificación
+  y no lanzan excepciones. La única excepción justificada es `notifications.py`, que
+  necesita `Popen` para no bloquear.
+- Windows emite en la página OEM del sistema, no en UTF-8. La cadena
+  `utf-8 → oem → cp1252 → latin-1` vive en `_shell._decode`. No la dupliques.
+- PowerShell se invoca con `-EncodedCommand`: no hace falta escapar comillas y el shell
+  no reinterpreta el contenido del script.
+- **Lo que decide si una acción es peligrosa se comprueba en el servidor, no solo en la
+  UI.** `processes._is_killable` es la fuente única para el listado y para el endpoint:
+  ocultar el botón no impide que llegue una petición con el PID de `lsass.exe`.
+- La CPU por proceso necesita dos lecturas separadas (`processes._sample`). Con una sola
+  llamada, `cpu_percent` devuelve el acumulado desde el arranque y sale 0.0 en todos.
+- Los tests (`python -m pytest tests/ -q`) no tocan el sistema: prueban parsers y
+  heurísticas contra salidas fijadas. Si tocas un parser o un umbral, actualízalos.
+- Los umbrales de detección de nombres generados al azar están calibrados sobre nombres
+  reales (`analyzer/_text.py`). Subirlos "por si acaso" desactiva la detección entera:
+  la entropía máxima de una cadena de 12 caracteres distintos es 3,58.
+- No añadas dependencias externas sin actualizar `requirements.txt`, `PCGuardian.spec`
+  (lista `hiddenimports`) y este fichero.

@@ -84,3 +84,13 @@
 - [x] **Historial de escaneos** — guardar cada análisis en SQLite y mostrar línea de tiempo; ver si la salud mejora o empeora
 - [x] **Notificaciones programadas** — escaneo silencioso al arrancar Windows con notificación toast si hay problemas críticos (tray icon via `pystray`)
 - [x] **Modo claro / oscuro** — toggle de tema persistente en localStorage
+
+---
+
+## Seguridad de plataforma
+
+- [x] **Protecciones del sistema** — BitLocker, Secure Boot, TPM, protección en tiempo real, protección contra manipulaciones, acceso controlado a carpetas (ransomware), antigüedad de las definiciones, UAC, SmartScreen y puntos de restauración
+- [x] **Firma digital de ejecutables** — Authenticode en el análisis de seguridad: un binario en carpeta temporal es un instalador normal si está firmado, y la combinación típica de malware si no lo está
+- [x] **Punto de restauración antes de escribir** — se ofrece crear uno antes de desinstalar un controlador
+- [x] **Aviso de privilegios** — banner con reinicio por UAC en lugar de descubrir la falta de permisos módulo a módulo
+- [ ] **Punto de restauración en el resto de operaciones** — instalar actualización de Windows, eliminar certificado, desinstalar programa
