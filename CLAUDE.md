@@ -47,6 +47,9 @@ analyzer/
   software.py               Inventario programas instalados vía winreg — uninstall vía winget
   dns.py                    Servidores DNS por interfaz, DoH, cambiar DNS (netsh)
   firewall_rules.py         Reglas no estándar habilitadas — PowerShell Get-NetFirewallRule
+  defaults.py               Aplicaciones predeterminadas por tipo de archivo y protocolo
+                            (solo lectura: UserChoice va firmado con un hash no documentado;
+                            la acción abre ms-settings:defaultapps)
   quickfix.py               Acciones rápidas: plan energía, deshabilitar startup, telemetría
   history.py                Historial de escaneos en SQLite (save/list/delete)
   perf_history.py           Snapshots de rendimiento en SQLite — record/get_history
@@ -86,6 +89,7 @@ por_implementar.md          Backlog con estado actualizado (✓ = implementado)
 | GET | `/api/scan/software` | Inventario de programas instalados |
 | GET | `/api/scan/dns` | Servidores DNS por interfaz + DoH |
 | GET | `/api/scan/firewall-rules` | Reglas de firewall no estándar |
+| GET | `/api/scan/defaults` | Aplicaciones predeterminadas por tipo |
 | GET | `/api/perf/snapshot` | Snapshot en tiempo real (polling 2 s) |
 | GET | `/api/perf/history` | Snapshots últimas 24 h (SQLite) |
 | GET | `/api/connectivity/speedtest` | Test de descarga ~10 MB |
@@ -102,6 +106,7 @@ por_implementar.md          Backlog con estado actualizado (✓ = implementado)
 | POST | `/api/software/uninstall` | Desinstala programa vía winget (**escritura**) |
 | POST | `/api/dns/set` | Cambia servidor DNS de una interfaz (**escritura**) |
 | POST | `/api/firewall-rules/delete` | Elimina regla de firewall (**escritura**) |
+| POST | `/api/defaults/open-settings` | Abre Configuración de apps predeterminadas |
 | POST | `/api/quickfix/energy-high` | Activa plan Alto Rendimiento (**escritura**) |
 | POST | `/api/quickfix/disable-startup` | Elimina entrada del registro Run (**escritura**) |
 | POST | `/api/quickfix/telemetry-off` | Desactiva telemetría Windows (**escritura**) |
@@ -157,7 +162,7 @@ Todos los módulos de escaneo devuelven:
 
 - Los módulos de `analyzer/` son **stateless**: no guardan estado entre llamadas. Excepción: `history.py` y `perf_history.py` escriben a SQLite.
 - El monitor de rendimiento (`perf`) **no** forma parte del escaneo general — es on-demand.
-- `firewall-rules` y `software` tampoco están en el escaneo general (on-demand).
+- `firewall-rules`, `software` y `defaults` tampoco están en el escaneo general (on-demand).
 - `winget` emite en la página OEM del sistema, no en UTF-8. `updates.py` prueba `utf-8 → oem → cp1252 → latin-1`. No cambies esto.
 - Los encabezados de `winget` están en el idioma del sistema. El parser usa aliases bilingües.
 - Todas las operaciones de escritura requieren confirmación explícita del usuario en la UI.
@@ -187,6 +192,10 @@ Todos los módulos de escaneo devuelven:
   la entropía máxima de una cadena de 12 caracteres distintos es 3,58.
 - No añadas dependencias externas sin actualizar `requirements.txt`, `PCGuardian.spec`
   (lista `hiddenimports`) y este fichero.
+- **Las asociaciones de archivo no se pueden cambiar por código.** Windows firma cada
+  clave `UserChoice` con un hash sobre SID + extensión + ProgId cuyo algoritmo no está
+  documentado; si se escribe el ProgId a mano, el sistema detecta la manipulación y
+  revierte la asociación. Por eso `defaults.py` solo lee y abre `ms-settings:defaultapps`.
 - Las bases de datos (`history.db`, `perf_history.db`, `benchmark.db`) viven en
   `%LOCALAPPDATA%\PCGuardian` a través de `_storage.db_path()`, nunca junto al código:
   bajo `Program Files` la carpeta es de solo lectura, y compilada con PyInstaller

@@ -46,6 +46,7 @@ const MODULE_META = {
   duplicates:       { label: 'Duplicados',   group: 'Herramientas',emoji: '📋', color: '#00cec9' },
   notifications:    { label: 'Notificaciones',group:'Herramientas',emoji: '🔔', color: '#e17055' },
   hardening:        { label: 'Protecciones',  group: 'Seguridad',  emoji: '🔐', color: '#fd79a8' },
+  defaults:         { label: 'Apps por defecto', group: 'Sistema', emoji: '🧩', color: '#a29bfe' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
@@ -245,6 +246,7 @@ async function _triggerModuleScan(id) {
   if (id === 'software')       { if (typeof scanSoftware      === 'function') scanSoftware();      return; }
   if (id === 'firewall-rules') { if (typeof scanFirewallRules === 'function') scanFirewallRules(); return; }
   if (id === 'benchmark')      { if (typeof runBenchmark     === 'function') runBenchmark();      return; }
+  if (id === 'defaults')       { if (typeof scanDefaults     === 'function') scanDefaults();      return; }
 
   if (btn) {
     btn.disabled = true;
@@ -271,7 +273,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening', 'defaults']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -391,6 +393,7 @@ const MODULE_CMDS = {
   processes:        ['psutil.process_iter(["pid","name","cpu_percent","memory_percent"])', 'proc.memory_info().rss', 'proc.terminate()'],
   dns:              ['Get-DnsClientServerAddress -AddressFamily IPv4', 'winreg HKLM\\SYSTEM\\...\\Dnscache\\EnableAutoDoh'],
   'firewall-rules': ['Get-NetFirewallRule -Enabled True | Where-Object {...} | ConvertTo-Json'],
+  defaults:         ['winreg HKCU\...\Shell\Associations\UrlAssociations\http\UserChoice', 'winreg HKCU\...\Explorer\FileExts\.pdf\UserChoice', 'ms-settings:defaultapps'],
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
@@ -550,6 +553,10 @@ function renderCard(id, data) {
     body.innerHTML = renderBenchmark(data);
     const btnBench = document.getElementById('btn-benchmark');
     if (btnBench) btnBench.style.display = '';
+  } else if (id === 'defaults') {
+    body.innerHTML = renderDefaults(data);
+    const btnDef = document.getElementById('btn-defaults');
+    if (btnDef) btnDef.style.display = '';
   } else if (id === 'startup') {
     body.innerHTML = renderStartup(data);
   } else {
@@ -3155,3 +3162,68 @@ async function elevateApp() {
 }
 
 document.addEventListener('DOMContentLoaded', checkAdmin);
+
+/* ── Aplicaciones predeterminadas ────────────────────────────────────────── */
+async function scanDefaults() {
+  const btn  = document.getElementById('btn-defaults');
+  const body = document.getElementById('body-defaults');
+  if (btn)  { btn.disabled = true; btn.textContent = 'Leyendo…'; }
+  if (body) body.innerHTML = `<div class="loading-state"><span class="spin-anim">🧩</span> Leyendo asociaciones del registro…</div>`;
+  try {
+    const data = await fetchModule('defaults');
+    renderCard('defaults', data);
+    scanResults['defaults'] = data;
+    updateNavDot('defaults', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Analizar'; }
+}
+
+function renderDefaults(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const btn = `<button class="btn-quickfix" onclick="openDefaultApps(${jsAttr(item.app || '')},this)">Cambiar en Configuración</button>`;
+    const detail = item.detail
+      ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${statusIcon(item.status)}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+          ${btn}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  const nota = `
+    <p class="module-note">
+      Windows firma cada asociación con un hash que solo él sabe calcular, así que
+      ningún programa externo puede cambiarla sin que el sistema la revierta.
+      El botón abre la pantalla de Configuración donde sí puedes hacerlo en dos clics.
+    </p>`;
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}${nota}`;
+}
+
+async function openDefaultApps(app, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Abriendo…'; }
+  try {
+    const res  = await fetch('/api/defaults/open-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app }),
+    });
+    const data = await res.json();
+    if (!data.ok) alert(data.msg);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Cambiar en Configuración'; }
+}

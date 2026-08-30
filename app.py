@@ -44,6 +44,7 @@ from analyzer.notifications import (enable_startup, disable_startup,
                                     startup_status, send_toast)
 from analyzer.hardening     import analyze_hardening
 from analyzer.restore       import create_restore_point, restore_status
+from analyzer.defaults      import analyze_defaults, open_default_apps_settings
 from analyzer._shell        import is_admin, relaunch_as_admin
 
 if getattr(sys, "frozen", False):
@@ -284,6 +285,15 @@ def scan_software():
 def do_uninstall():
     body = request.get_json(force=True, silent=True) or {}
     return jsonify(uninstall_software(body.get("name", "")))
+
+@app.route("/api/scan/defaults")
+def scan_defaults():
+    return jsonify(analyze_defaults())
+
+@app.route("/api/defaults/open-settings", methods=["POST"])
+def defaults_open_settings():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(open_default_apps_settings(body.get("app", "")))
 
 @app.route("/api/quickfix/energy-high", methods=["POST"])
 def qf_energy():

@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from analyzer import _shell, _text, maintenance, network, services, updates, wifi  # noqa: E402
+from analyzer import _shell, _text, defaults, maintenance, network, services, updates, wifi  # noqa: E402
 from analyzer.certs import _common_name  # noqa: E402
 
 
@@ -621,3 +621,115 @@ class TestClasificarPuertos:
     def test_netbios_y_wsd_son_estandar_de_windows(self):
         items = network._classify_ports([_e("0.0.0.0", 139), _e("::", 5357)])
         assert all(i["status"] == "ok" for i in items)
+
+
+# ── Aplicaciones predeterminadas ──────────────────────────────────────────────
+
+class TestExeDelComando:
+    def test_ruta_entre_comillas_con_espacios(self):
+        cmd = r'"C:\Program Files\Google\Chrome\chrome.exe" --single-argument %1'
+        assert defaults._exe_from_command(cmd) == r"C:\Program Files\Google\Chrome\chrome.exe"
+
+    def test_ruta_sin_comillas(self):
+        assert defaults._exe_from_command(r"C:\Windows\notepad.exe %1") == r"C:\Windows\notepad.exe"
+
+    def test_variables_de_entorno_se_expanden(self):
+        exe = defaults._exe_from_command(r'"%SystemRoot%\system32\notepad.exe" %1')
+        assert exe.lower().endswith("notepad.exe") and "%SystemRoot%" not in exe
+
+    def test_comando_vacio(self):
+        assert defaults._exe_from_command("") == ""
+
+    def test_rundll32_conserva_el_ejecutable(self):
+        cmd = r'"C:\Windows\system32\rundll32.exe" shell32.dll,OpenAs_RunDLL %1'
+        assert defaults._exe_from_command(cmd).lower().endswith("rundll32.exe")
+
+
+class TestNombreLegible:
+    def test_usa_el_nombre_del_ejecutable(self):
+        assert defaults._friendly_name("LoQueSea", r"C:\x\slack.exe") == "Slack"
+
+    def test_progid_conocido_gana_al_ejecutable(self):
+        assert defaults._friendly_name("Acrobat.Document.DC", r"C:\x\acrobat.exe") == "Adobe Acrobat"
+
+    def test_sin_ejecutable_cae_al_progid(self):
+        assert defaults._friendly_name("AppX4hxtad77", "") == "AppX4hxtad77"
+
+    def test_sin_nada_devuelve_marcador(self):
+        assert defaults._friendly_name("", "") == "Sin asignar"
+
+
+class TestEvaluarAsociacion:
+    def test_programa_normal_es_ok(self):
+        assert defaults._evaluate("ChromeHTML", r"C:\Program Files\Google\chrome.exe")[0] == "ok"
+
+    def test_sin_asociacion_avisa(self):
+        assert defaults._evaluate("", "")[0] == "warning"
+
+    def test_ejecutable_en_temp_es_peligroso(self):
+        assert defaults._evaluate("Raro", r"C:\Users\x\AppData\Local\Temp\raro.exe")[0] == "danger"
+
+    def test_ejecutable_en_descargas_es_peligroso(self):
+        assert defaults._evaluate("Raro", r"C:\Users\x\Downloads\instalador.exe")[0] == "danger"
+
+    def test_appx_del_store_sin_ruta_es_ok(self):
+        assert defaults._evaluate("AppXd4nrz8ff68srnhf9t5a8sbjyar1cr723", "")[0] == "ok"
+
+    def test_programa_instalado_en_appdata_es_ok(self):
+        assert defaults._evaluate("Slack", r"C:\Users\x\AppData\Local\slack\slack.exe")[0] == "ok"
+
+
+    def test_progid_que_no_resuelve_a_ninguna_app_avisa(self):
+        st, motivo = defaults._evaluate("AppXydk58wgm44se4b399557yyyj1w7mbmvd", "", resuelto=False)
+        assert st == "warning" and "registrada" in motivo.lower()
+
+    def test_progid_que_si_resuelve_no_avisa(self):
+        assert defaults._evaluate("AppXalgo", "", resuelto=True)[0] == "ok"
+
+
+class TestUriDeAjustes:
+    def test_sin_app_abre_la_pagina_general(self):
+        assert defaults._settings_uri("") == "ms-settings:defaultapps"
+
+    def test_con_app_apunta_a_su_ficha(self):
+        assert defaults._settings_uri("Firefox") == "ms-settings:defaultapps?registeredAppUser=Firefox"
+
+    def test_escapa_espacios(self):
+        uri = defaults._settings_uri("Adobe Acrobat")
+        assert " " not in uri and uri.endswith("Adobe%20Acrobat")
+
+    def test_no_permite_arrastrar_parametros_extra(self):
+        uri = defaults._settings_uri("x&cmd=calc.exe")
+        assert uri.startswith("ms-settings:defaultapps?registeredAppUser=") and "&" not in uri
+
+
+class TestNombreDeAppDelStore:
+    def test_extrae_el_paquete_del_aumid(self):
+        assert defaults._package_display("Microsoft.Windows.Photos_8wekyb3d8bbwe!App") == "Fotos"
+
+    def test_paquete_desconocido_pierde_el_prefijo_y_el_hash(self):
+        assert defaults._package_display("Contoso.SuperEditor_abcd1234!App") == "SuperEditor"
+
+    def test_paquete_de_microsoft_desconocido(self):
+        assert defaults._package_display("Microsoft.CosaRara_8wekyb3d8bbwe!App") == "CosaRara"
+
+    def test_cadena_vacia(self):
+        assert defaults._package_display("") == ""
+
+    def test_recurso_indirecto_no_resuelto_no_se_muestra_crudo(self):
+        crudo = "@{Microsoft.Windows.Photos_2026.1_x64__8wekyb3d8bbwe?ms-resource://X/Y}"
+        assert defaults._clean_resource_string(crudo) == ""
+
+    def test_nombre_normal_se_respeta(self):
+        assert defaults._clean_resource_string("Fotos") == "Fotos"
+
+
+class TestAsociacionHuerfana:
+    def test_progid_muerto_no_muestra_el_hash_como_aplicacion(self, monkeypatch):
+        monkeypatch.setattr(defaults, "_read_command", lambda progid: "")
+        monkeypatch.setattr(defaults, "_appx_name", lambda progid: "")
+        item = defaults._asociacion("Enlaces de correo", "AppXydk58wgm44se4b399557yyyj1w7mbmvd")
+        assert item["status"] == "warning"
+        assert item["value"] == "Sin aplicación válida"
+        assert item["app"] == ""          # el botón abre la página general
+        assert "AppXydk58" in item["detail"]   # el ProgId sigue visible como dato técnico

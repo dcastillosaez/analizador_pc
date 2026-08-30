@@ -2414,3 +2414,26 @@ body {
   .admin-banner { flex-wrap: wrap; margin: 12px 16px 0; }
   .admin-banner-btn { width: 100%; }
 }
+
+/* Nota explicativa al pie de un módulo */
+.module-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--primary);
+  background: rgba(79, 142, 247, 0.07);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Estado de carga de un módulo on-demand */
+.loading-state {
+  display: flex; align-items: center; gap: 10px;
+  padding: 30px 0 24px;
+  color: var(--text-muted);
+  font-size: 0.83rem;
+}
+.loading-state .spin-anim { display: inline-block; font-size: 1.3rem; }
+
+.c-defaults { background: linear-gradient(135deg, rgba(162,155,254,0.20), rgba(108,92,231,0.10)); }
