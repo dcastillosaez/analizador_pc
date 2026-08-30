@@ -106,7 +106,11 @@ def analyze_startup() -> dict:
                     name, value, _ = winreg.EnumValue(key, idx)
                     if name.lower() not in seen:
                         seen.add(name.lower())
-                        items.append(_classify(name, str(value)))
+                        item = _classify(name, str(value))
+                        item["fix_hive"] = "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
+                        item["fix_key"]  = key_path
+                        item["fix_name"] = name
+                        items.append(item)
                     idx += 1
                 except OSError:
                     break

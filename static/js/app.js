@@ -1,5 +1,17 @@
 'use strict';
 
+/* ── Tema claro / oscuro ─────────────────────────────────────────────────── */
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  if (isLight) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('pc-guardian-theme', 'dark');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'light');
+    localStorage.setItem('pc-guardian-theme', 'light');
+  }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    NAVEGACIÓN — Sidebar + Overview + Module View
    (Se añade al inicio; no modifica las funciones existentes)
@@ -24,13 +36,19 @@ const MODULE_META = {
   wupdates:     { label: 'Updates Windows',  group: 'Mantenimiento', emoji: '🪟', color: '#0078d4' },
   wifi:         { label: 'Analizador WiFi', group: 'Red',           emoji: '📶', color: '#00cec9' },
   certs:        { label: 'Certificados',   group: 'Red',           emoji: '🏅', color: '#fdcb6e' },
-  processes:    { label: 'Procesos',        group: 'Rendimiento',   emoji: '🖥️', color: '#00b894' },
-  connections:  { label: 'Conexiones',      group: 'Red',           emoji: '🔗', color: '#0984e3' },
-  hardening:    { label: 'Protecciones',    group: 'Seguridad',     emoji: '🔐', color: '#fd79a8' },
+  connections:  { label: 'Conexiones TCP', group: 'Red',           emoji: '🔌', color: '#e17055' },
+  processes:    { label: 'Procesos',       group: 'Rendimiento',   emoji: '⚡', color: '#6c5ce7' },
+  software:         { label: 'Programas',    group: 'Sistema',    emoji: '📦', color: '#00b894' },
+  dns:              { label: 'DNS activo',   group: 'Red',        emoji: '🌐', color: '#0984e3' },
+  'firewall-rules': { label: 'Firewall',     group: 'Seguridad',  emoji: '🛡️', color: '#d63031' },
+  benchmark:        { label: 'Benchmark',    group: 'Rendimiento',emoji: '⚡', color: '#fdcb6e' },
+  diskmap:          { label: 'Mapa de disco',group: 'Herramientas',emoji: '💾', color: '#6c5ce7' },
+  duplicates:       { label: 'Duplicados',   group: 'Herramientas',emoji: '📋', color: '#00cec9' },
+  notifications:    { label: 'Notificaciones',group:'Herramientas',emoji: '🔔', color: '#e17055' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
-const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','connections','hardening'];
+const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services'];
 
 // Estado de navegación
 let activeView = 'overview';
@@ -63,9 +81,12 @@ function navigateTo(id) {
   if (crumb) {
     crumb.textContent = id === 'overview'
       ? 'Resumen'
-      : id === 'history'
-        ? 'Historial de escaneos'
-        : (MODULE_META[id] ? MODULE_META[id].label : id);
+      : id === 'history'       ? 'Historial'
+      : id === 'perf-history' ? 'Tendencias'
+      : id === 'diskmap'      ? 'Mapa de disco'
+      : id === 'duplicates'   ? 'Archivos duplicados'
+      : id === 'notifications'? 'Notificaciones'
+      : (MODULE_META[id] ? MODULE_META[id].label : id);
   }
 
   // Sidebar footer — última vez escaneado
@@ -78,15 +99,40 @@ function navigateTo(id) {
 
   // Render vista
   if (id === 'overview') {
+    _hideHistorySection();
     renderOverview();
   } else if (id === 'history') {
-    renderHistoryView();
+    _returnCardsToPool();
+    _hideContentArea();
+    showHistoryView();
+  } else if (id === 'perf-history') {
+    _returnCardsToPool(); _hideContentArea(); showPerfHistoryView();
+  } else if (id === 'diskmap') {
+    _returnCardsToPool(); _hideContentArea(); showDiskmapSection();
+  } else if (id === 'duplicates') {
+    _returnCardsToPool(); _hideContentArea(); showDuplicatesSection();
+  } else if (id === 'notifications') {
+    _returnCardsToPool(); _hideContentArea(); showNotificationsSection();
   } else {
+    _hideHistorySection();
     showModuleView(id);
   }
 
   // En móvil cerrar sidebar al navegar
   if (window.innerWidth <= 900) closeSidebar();
+}
+
+const _SPECIAL_SECTIONS = ['history-section','perf-history-section',
+  'diskmap-section','duplicates-section','notifications-section'];
+
+function _hideHistorySection() {
+  _SPECIAL_SECTIONS.forEach(id => { const el = _id(id); if (el) el.classList.add('hidden'); });
+  const ca = _id('content-area');
+  if (ca) ca.style.display = '';
+}
+function _hideContentArea() {
+  const ca = _id('content-area');
+  if (ca) ca.style.display = 'none';
 }
 
 // ── Renderiza el grid de resumen ─────────────────────────────────────────────
@@ -122,7 +168,7 @@ function renderOverview() {
           <span class="${dotClass}"></span>
         </div>
         <div class="overview-tile-label">${meta.label}</div>
-        <div class="overview-tile-sub">${escHtml(subText)}</div>
+        <div class="overview-tile-sub">${subText}</div>
         <div class="overview-tile-footer">
           <button class="overview-tile-btn" onclick="event.stopPropagation();navigateTo('${id}')">Ver detalles</button>
         </div>
@@ -186,16 +232,21 @@ async function _triggerModuleScan(id) {
 
   if (id === 'perf')     { if (typeof togglePerf   === 'function') togglePerf();   return; }
   if (id === 'updates')  { if (typeof scanUpdates  === 'function') scanUpdates();  return; }
-  if (id === 'wupdates') { if (typeof checkWindowsUpdates === 'function') checkWindowsUpdates(); return; }
-  if (id === 'wifi')     { if (typeof scanWifi  === 'function') scanWifi();  return; }
-  if (id === 'certs')    { if (typeof scanCerts === 'function') scanCerts(); return; }
+  if (id === 'wupdates')    { if (typeof checkWindowsUpdates === 'function') checkWindowsUpdates(); return; }
+  if (id === 'wifi')        { if (typeof scanWifi  === 'function') scanWifi();  return; }
+  if (id === 'certs')       { if (typeof scanCerts === 'function') scanCerts(); return; }
+  if (id === 'connections') { if (typeof scanConnections === 'function') scanConnections(); return; }
+  if (id === 'processes')  { if (typeof scanProcesses  === 'function') scanProcesses();  return; }
+  if (id === 'software')       { if (typeof scanSoftware      === 'function') scanSoftware();      return; }
+  if (id === 'firewall-rules') { if (typeof scanFirewallRules === 'function') scanFirewallRules(); return; }
+  if (id === 'benchmark')      { if (typeof runBenchmark     === 'function') runBenchmark();      return; }
 
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`;
   }
   try {
-    const data = await fetchModule(id, { fresh: true });
+    const data = await fetchModule(id);
     if (typeof renderCard === 'function') renderCard(id, data);
     if (typeof scanResults !== 'undefined') scanResults[id] = data;
     calculateScore();
@@ -215,7 +266,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -310,8 +361,8 @@ const MODULES = [
   { id: 'energy',       label: 'Leyendo sensores de energía y temperatura…',  step: 'pstep-energy'       },
   { id: 'privacy',      label: 'Auditando privacidad y archivos temporales…', step: 'pstep-privacy'      },
   { id: 'services',     label: 'Inspeccionando servicios de Windows…',       step: 'pstep-services'     },
-  { id: 'connections',  label: 'Revisando conexiones salientes activas…',    step: 'pstep-connections'  },
-  { id: 'hardening',    label: 'Comprobando protecciones de Windows…',       step: 'pstep-hardening'    },
+  { id: 'processes',   label: 'Analizando procesos activos…',               step: 'pstep-processes'    },
+  { id: 'dns',         label: 'Comprobando configuración DNS…',             step: 'pstep-dns'          },
 ];
 
 let scanResults = {};
@@ -321,7 +372,7 @@ let scanning    = false;
 const MODULE_CMDS = {
   hardware:    ['psutil.cpu_percent(interval=1)', 'psutil.virtual_memory()', 'psutil.disk_usage("C:\\\\")'],
   startup:     ['winreg HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run', 'winreg HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run'],
-  security:    ['psutil.process_iter(["pid","name","exe"])', 'entropy_check(process_names)', 'powershell Get-AuthenticodeSignature', 'critical_process_count()'],
+  security:    ['psutil.process_iter(["pid","name","exe"])', 'entropy_check(process_names)', 'critical_process_count()'],
   drivers:     ['powershell Get-WmiObject Win32_PnPSignedDriver', 'winreg HKLM:\\Software\\...\\Uninstall\\*'],
   protection:  ['powershell Get-CimInstance AntiVirusProduct', 'powershell Get-NetFirewallProfile'],
   network:     ['psutil.net_connections(kind="inet")', 'open("C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts")'],
@@ -329,30 +380,14 @@ const MODULE_CMDS = {
   updates:     ['winget list --upgrade-available --source winget'],
   connectivity: ['ping -n 4 8.8.8.8', 'socket.gethostbyname("www.google.com")', 'route print 0.0.0.0'],
   energy:       ['powercfg /getactivescheme', 'psutil.sensors_battery()', 'wmi.WMI(namespace="root\\\\OpenHardwareMonitor").Sensor()'],
-  processes:    ['psutil.process_iter(["pid","name"])', 'proc.cpu_percent(interval=0.6)', 'proc.memory_info().rss'],
-  connections:  ['psutil.net_connections(kind="tcp")', 'socket.gethostbyaddr(remote_ip)'],
-  hardening:    ['powershell Confirm-SecureBootUEFI', 'powershell Get-BitLockerVolume', 'powershell Get-MpComputerStatus', 'winreg HKLM\\...\\Policies\\System EnableLUA'],
   privacy:      ['winreg HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection', 'winreg HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore', 'Get-WinEvent -FilterHashtable @{LogName="System";Level=1,2}'],
+  connections:  ['psutil.net_connections(kind="tcp")', 'socket.gethostbyaddr(remote_ip)', 'psutil.Process(pid).name()'],
+  processes:        ['psutil.process_iter(["pid","name","cpu_percent","memory_percent"])', 'proc.memory_info().rss', 'proc.terminate()'],
+  dns:              ['Get-DnsClientServerAddress -AddressFamily IPv4', 'winreg HKLM\\SYSTEM\\...\\Dnscache\\EnableAutoDoh'],
+  'firewall-rules': ['Get-NetFirewallRule -Enabled True | Where-Object {...} | ConvertTo-Json'],
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
-// Modulos simultaneos durante el escaneo global. Varios tardan segundos
-// esperando a WMI, winget o la red; en serie el escaneo completo se va a
-// minutos. Con 4 en vuelo el cuello de botella pasa a ser el modulo mas lento.
-const SCAN_CONCURRENCY = 4;
-
-/** Ejecuta `worker` sobre cada elemento con como mucho `limit` en vuelo. */
-async function runPool(items, limit, worker) {
-  let next = 0;
-  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const i = next++;
-      await worker(items[i], i);
-    }
-  });
-  await Promise.all(lanes);
-}
-
 async function startScan() {
   if (scanning) return;
   scanning = true;
@@ -362,15 +397,12 @@ async function startScan() {
   showProgress(true);
   hideSummary();
   clearTerminal();
-  resetSteps();
 
   termLog('info', '=== PC Guardian — análisis iniciado ===');
 
-  let done = 0;
-  const total = MODULES.length;
-
-  await runPool(MODULES, SCAN_CONCURRENCY, async (mod) => {
-    setProgress(mod.label, Math.round((done / total) * 100));
+  for (let i = 0; i < MODULES.length; i++) {
+    const mod = MODULES[i];
+    setProgress(mod.label, Math.round((i / MODULES.length) * 100));
     setStepState(mod.step, 'active');
 
     const t0 = performance.now();
@@ -378,7 +410,7 @@ async function startScan() {
     cmds.forEach(c => termLog('cmd', `> ${c}`));
 
     try {
-      const data = await fetchModule(mod.id, { fresh: true });
+      const data = await fetchModule(mod.id);
       const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
       scanResults[mod.id] = data;
       renderCard(mod.id, data);
@@ -393,9 +425,8 @@ async function startScan() {
       termLog('error', `✗ Error en ${mod.id} (${elapsed}s): ${err.message}`);
     }
 
-    done++;
-    setProgress(null, Math.round((done / total) * 100));
-  });
+    setProgress(null, Math.round(((i + 1) / MODULES.length) * 100));
+  }
 
   termLog('info', '=== Análisis completado ===');
   setScanningUI(false);
@@ -403,20 +434,27 @@ async function startScan() {
   renderSummary();
   updateLastScan();
   calculateScore();
-  if (typeof saveScanToHistory === 'function') saveScanToHistory();
   scanning = false;
+  _autoSaveHistory();
+}
+
+async function _autoSaveHistory() {
+  try {
+    const scoreEl = document.querySelector('.score-number');
+    const score   = scoreEl ? parseInt(scoreEl.textContent, 10) || 0 : 0;
+    await fetch('/api/history/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score, results: scanResults }),
+    });
+  } catch (_) { /* silencioso */ }
 }
 
 /* ── Fetch ───────────────────────────────────────────────────────────────── */
-// fresh:true salta la cache del servidor. Se usa en las acciones explicitas
-// del usuario (escaneo global, boton "Analizar modulo"); la navegacion normal
-// reutiliza el resultado reciente en lugar de repetir consultas caras a WMI.
-async function fetchModule(id, { fresh = false } = {}) {
-  const res = await fetch(`/api/scan/${id}${fresh ? '?fresh=1' : ''}`);
-  let data = null;
-  try { data = await res.json(); } catch (e) { /* respuesta no JSON */ }
-  if (!res.ok) throw new Error((data && data.message) || `HTTP ${res.status}`);
-  return data;
+async function fetchModule(id) {
+  const res = await fetch(`/api/scan/${id}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }
 
 /* ── Render de tarjeta ───────────────────────────────────────────────────── */
@@ -456,14 +494,34 @@ function renderCard(id, data) {
     body.innerHTML = renderWifi(data);
     const btnWifi = document.getElementById('btn-wifi');
     if (btnWifi) btnWifi.style.display = '';
-  } else if (id === 'processes') {
-    body.innerHTML = renderProcesses(data);
-  } else if (id === 'connections') {
-    body.innerHTML = renderConnections(data);
   } else if (id === 'certs') {
     body.innerHTML = renderCerts(data);
     const btnC = document.getElementById('btn-certs');
     if (btnC) btnC.style.display = '';
+  } else if (id === 'connections') {
+    body.innerHTML = renderConnections(data);
+    const btnConn = document.getElementById('btn-connections');
+    if (btnConn) btnConn.style.display = '';
+  } else if (id === 'processes') {
+    body.innerHTML = renderProcesses(data);
+    const btnProc = document.getElementById('btn-processes');
+    if (btnProc) btnProc.style.display = '';
+  } else if (id === 'software') {
+    body.innerHTML = renderSoftware(data);
+    const btnSoft = document.getElementById('btn-software');
+    if (btnSoft) btnSoft.style.display = '';
+  } else if (id === 'dns') {
+    body.innerHTML = renderDns(data);
+  } else if (id === 'firewall-rules') {
+    body.innerHTML = renderFirewallRules(data);
+    const btnFw = document.getElementById('btn-firewall-rules');
+    if (btnFw) btnFw.style.display = '';
+  } else if (id === 'benchmark') {
+    body.innerHTML = renderBenchmark(data);
+    const btnBench = document.getElementById('btn-benchmark');
+    if (btnBench) btnBench.style.display = '';
+  } else if (id === 'startup') {
+    body.innerHTML = renderStartup(data);
   } else {
     body.innerHTML = renderGeneric(data);
   }
@@ -709,7 +767,7 @@ async function scanUpdates() {
     </div>`;
 
   try {
-    const data = await fetchModule('updates', { fresh: true });
+    const data = await fetchModule('updates');
     renderUpdates(data, body, badge);
   } catch (e) {
     body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>No se pudo conectar con el servidor.</p></div>`;
@@ -816,39 +874,8 @@ async function doDriverUpdate(deviceId, idx) {
   }
 }
 
-/* ── Punto de restauración antes de un cambio irreversible ────────────────── */
-// Desinstalar un controlador, instalar una actualización o borrar un
-// certificado son cambios que cuesta deshacer. Se ofrece la red de seguridad
-// que Windows ya trae, en vez de dar por hecho que saldrá bien.
-function pedirPuntoDeRestauracion(accion) {
-  return confirm(
-    `¿Crear un punto de restauración antes de ${accion}?
-
-` +
-    `Tarda entre 30 segundos y un par de minutos, y permite deshacer el cambio ` +
-    `desde Windows si algo va mal.
-
-` +
-    `Aceptar = crear el punto primero · Cancelar = continuar sin él.`
-  );
-}
-
-// Añade al mensaje de resultado lo que pasó con el punto de restauración.
-function _avisoRestauracion(data) {
-  if (!data || !data.restore) return '';
-  return data.restore.success
-    ? `
-
-Punto de restauración creado antes del cambio.`
-    : `
-
-No se creó el punto de restauración: ${data.restore.message}`;
-}
-
 async function doDriverUninstall(deviceId, deviceName, idx) {
   if (!confirm(`¿Desinstalar el dispositivo "${deviceName}"?\n\nEl controlador se eliminará del árbol de dispositivos. Si Windows lo redetecta al reiniciar, puede volver a instalarse automáticamente.\n\nEsta acción requiere permisos de administrador.`)) return;
-
-  const conPunto = pedirPuntoDeRestauracion('desinstalar el controlador');
 
   const btn = document.getElementById(`drvunin-${idx}`);
   if (!btn) return;
@@ -860,7 +887,7 @@ async function doDriverUninstall(deviceId, deviceName, idx) {
     const res = await fetch('/api/driver/uninstall', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId, restore_point: conPunto }),
+      body: JSON.stringify({ device_id: deviceId }),
     });
     const data = await res.json();
     if (data.success) {
@@ -868,7 +895,7 @@ async function doDriverUninstall(deviceId, deviceName, idx) {
       btn.textContent = '✓ Desinstalado';
       const row = document.getElementById(`drv-row-${idx}`);
       if (row) row.style.opacity = '0.4';
-      alert(data.message + _avisoRestauracion(data));
+      alert(data.message);
     } else {
       btn.className = 'btn-drv btn-drv-uninstall error';
       btn.textContent = '✗ Error';
@@ -1072,6 +1099,10 @@ function renderPrivacy(data) {
 
   const rows = data.items.map(item => {
     const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    const isTelemetry = item.name === 'Telemetría de Windows';
+    const telemetryBtn = isTelemetry && item.status !== 'ok' ? `
+      <button class="btn-quickfix" onclick="doFixTelemetry(this)">🔕 Desactivar telemetría</button>` : '';
+
     const isTemp = item.name === 'Archivos temporales';
     const cleanBtn = isTemp && item.status !== 'ok' ? `
       <button class="btn-clean-temp" id="btn-clean-temp" onclick="doCleanTemp(this)">
@@ -1093,6 +1124,7 @@ function renderPrivacy(data) {
         <div class="item-right">
           <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
           ${cleanBtn}
+          ${telemetryBtn}
         </div>
       </div>`;
   }).join('');
@@ -1151,6 +1183,9 @@ function renderEnergy(data) {
       </div>` : '';
 
     const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    const fixBtn = (item.name === 'Plan de energía' && item.status !== 'ok')
+      ? `<button class="btn-quickfix" onclick="doFixEnergyHigh(this)">⚡ Aplicar Alto Rendimiento</button>`
+      : '';
 
     return `
       <div class="item ${escHtml(item.status)}">
@@ -1160,6 +1195,7 @@ function renderEnergy(data) {
           <span class="item-msg">${escHtml(item.message)}</span>
           ${detail}
           ${gauge}
+          ${fixBtn}
         </div>
         <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
       </div>`;
@@ -1389,7 +1425,6 @@ function calculateScore() {
   }
 
   const score = Math.round(weightedSum / totalWeight);
-  _lastScore = score;   // lo consume saveScanToHistory()
 
   // Color según score
   let color, label;
@@ -1491,21 +1526,18 @@ function renderCerts(data) {
 
 async function doDeleteCert(storePath, thumbprint, idx) {
   if (!confirm('¿Eliminar este certificado caducado?\n\nEsta acción es irreversible y requiere permisos de administrador.')) return;
-  const conPunto = pedirPuntoDeRestauracion('eliminar el certificado');
   const btn = document.getElementById(`certdel-${idx}`);
   if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
   try {
-    const res  = await fetch('/api/cert/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({store_path: storePath, thumbprint, restore_point: conPunto}) });
+    const res  = await fetch('/api/cert/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({store_path: storePath, thumbprint}) });
     const data = await res.json();
     if (data.success) {
       const row = document.getElementById(`cert-row-${idx}`);
       if (row) row.style.opacity = '0.35';
       if (btn) { btn.textContent = '✓ Eliminado'; btn.style.color = 'var(--success)'; }
-      const aviso = _avisoRestauracion(data);
-      if (aviso) alert('Certificado eliminado.' + aviso);
     } else {
       if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; btn.title = data.message; }
-      alert('No se pudo eliminar: ' + data.message + _avisoRestauracion(data));
+      alert('No se pudo eliminar:\n\n' + data.message);
     }
   } catch(e) {
     if (btn) { btn.disabled = false; btn.textContent = '✗ Error'; }
@@ -1518,7 +1550,7 @@ async function scanCerts() {
   if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`; }
   if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🏅</span><p>Revisando certificados…</p></div>`;
   try {
-    const data = await fetchModule('certs', { fresh: true });
+    const data = await fetchModule('certs');
     renderCard('certs', data);
     scanResults['certs'] = data;
     updateNavDot('certs', data.status);
@@ -1540,20 +1572,18 @@ function exportReport() {
 
   const sections = Object.entries(results).map(([id, data]) => {
     if (!data || !data.title) return '';
-    // Los datos vienen del sistema (nombres de proceso, rutas, claves de registro):
-    // pueden contener '<' o comillas, asi que se escapan igual que en la UI.
     const itemRows = (data.items || []).map(item => `
-      <tr class="s-${escHtml(item.status)}">
-        <td>${escHtml(item.name)}</td>
-        <td>${escHtml(STATUS_LABEL[item.status] || item.status)}</td>
-        <td>${escHtml(item.message)}</td>
-        <td>${escHtml(item.value)}</td>
-        <td>${escHtml(item.detail)}</td>
+      <tr class="s-${item.status}">
+        <td>${item.name || ''}</td>
+        <td>${STATUS_LABEL[item.status] || item.status}</td>
+        <td>${item.message || ''}</td>
+        <td>${item.value || ''}</td>
+        <td>${item.detail || ''}</td>
       </tr>`).join('');
     const table = itemRows ? `<table><thead><tr><th>Elemento</th><th>Estado</th><th>Mensaje</th><th>Valor</th><th>Detalle</th></tr></thead><tbody>${itemRows}</tbody></table>` : '';
     return `<section>
-      <h2><span class="badge-${escHtml(data.status)}">${STATUS_LABEL[data.status] || ''}</span> ${escHtml(data.title)}</h2>
-      <p class="summary">${escHtml(data.summary)}</p>
+      <h2><span class="badge-${data.status}">${STATUS_LABEL[data.status] || ''}</span> ${data.title}</h2>
+      <p class="summary">${data.summary || ''}</p>
       ${table}
     </section>`;
   }).join('');
@@ -1580,40 +1610,13 @@ ${sections}
 <footer>PC Guardian · Informe generado automáticamente</footer>
 </body></html>`;
 
-  _descargar(html, 'text/html;charset=utf-8', 'html');
-}
-
-/** Descarga un contenido generado en el navegador como fichero. */
-function _descargar(contenido, tipo, extension) {
-  const blob = new Blob([contenido], { type: tipo });
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
-  a.download = `PCGuardian_${new Date().toISOString().slice(0, 10)}.${extension}`;
+  a.download = `PCGuardian_${new Date().toISOString().slice(0,10)}.html`;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/** Exporta los datos en bruto. El HTML es para leerlo; esto es para procesarlo:
- *  comparar dos escaneos con un script, alimentar una hoja de calculo o
- *  guardarlo como referencia de como estaba el equipo un dia concreto. */
-function exportReportJSON() {
-  const results = (typeof scanResults !== 'undefined' ? scanResults : {});
-  if (!Object.keys(results).length) {
-    alert('Primero ejecuta "Escanear Sistema" para tener datos que exportar.');
-    return;
-  }
-
-  const payload = {
-    generado: new Date().toISOString(),
-    aplicacion: 'PC Guardian',
-    puntuacion: (typeof _lastScore !== 'undefined') ? _lastScore : null,
-    incidencias_totales: Object.values(results)
-      .reduce((n, m) => n + ((m && m.issue_count) || 0), 0),
-    modulos: results,
-  };
-
-  _descargar(JSON.stringify(payload, null, 2), 'application/json;charset=utf-8', 'json');
 }
 
 /* ── Analizador WiFi ─────────────────────────────────────────────────────── */
@@ -1725,7 +1728,7 @@ async function scanWifi() {
   if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">📶</span><p>Escaneando redes WiFi cercanas…</p></div>`;
 
   try {
-    const data = await fetchModule('wifi', { fresh: true });
+    const data = await fetchModule('wifi');
     renderCard('wifi', data);
     scanResults['wifi'] = data;
     updateNavDot('wifi', data.status);
@@ -1740,6 +1743,70 @@ async function scanWifi() {
       <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
     </svg> Analizar`;
   }
+}
+
+/* ── Conexiones TCP salientes ────────────────────────────────────────────── */
+async function scanConnections() {
+  const btn  = document.getElementById('btn-connections');
+  const body = document.getElementById('body-connections');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🔌</span><p>Resolviendo conexiones activas…</p></div>`;
+
+  try {
+    const data = await fetchModule('connections');
+    renderCard('connections', data);
+    scanResults['connections'] = data;
+    updateNavDot('connections', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`;
+  }
+}
+
+function renderConnections(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px">
+        <span class="empty-emoji">✅</span>
+        <p>Sin conexiones TCP externas activas en este momento.</p>
+      </div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon  = statusIcon(item.status);
+    const badge = `<span class="conn-port-badge ${item.status}">${escHtml(item.value)}</span>`;
+    return `
+      <tr class="conn-row conn-${item.status}">
+        <td class="conn-icon">${icon}</td>
+        <td class="conn-proc">${escHtml(item.name)}</td>
+        <td class="conn-dest">${escHtml(item.message)}</td>
+        <td class="conn-port">${badge}</td>
+      </tr>
+      ${item.detail ? `<tr class="conn-detail-row"><td colspan="4"><span class="conn-detail">${escHtml(item.detail)}</span></td></tr>` : ''}`;
+  }).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="conn-table-wrap">
+      <table class="conn-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Proceso</th>
+            <th>Destino</th>
+            <th>Puerto</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 /* ── Renderer de Actualizaciones Windows ─────────────────────────────────── */
@@ -1807,25 +1874,17 @@ async function doWindowsUpdate(updateId, idx) {
 
   if (!confirm('¿Instalar esta actualización de Windows ahora?\n\nEl proceso puede tardar varios minutos. Es posible que se requiera reiniciar el equipo al finalizar.')) return;
 
-  const conPunto = pedirPuntoDeRestauracion('instalar la actualización');
-
   btn.disabled = true;
   btn.className = 'btn-wupdate updating';
   btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Instalando…`;
 
   try {
-    const res = await fetch(`/api/wupdate/apply/${encodeURIComponent(updateId)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ restore_point: conPunto }),
-    });
+    const res = await fetch(`/api/wupdate/apply/${encodeURIComponent(updateId)}`, { method: 'POST' });
     const data = await res.json();
 
     if (data.success) {
       btn.className = 'btn-wupdate done';
       btn.textContent = '✓ Instalada';
-      const avisoWU = _avisoRestauracion(data);
-      if (avisoWU) alert('Actualización instalada.' + avisoWU);
       const row = document.getElementById(`wupdate-row-${idx}`);
       if (row) row.style.opacity = '0.5';
       if (data.reboot_required) {
@@ -1869,7 +1928,7 @@ async function checkWindowsUpdates() {
   }
 
   try {
-    const data = await fetchModule('wupdates', { fresh: true });
+    const data = await fetchModule('wupdates');
     renderCard('wupdates', data);
     scanResults['wupdates'] = data;
     updateNavDot('wupdates', data.status);
@@ -1955,393 +2014,1035 @@ function renderInventory(data) {
   return `<div class="card-summary">${escHtml(data.summary || '')}</div>${sections}`;
 }
 
-/* ── Privilegios de administrador ──────────────────────────────── */
-// Sin elevacion, media docena de modulos devuelven datos parciales y el usuario
-// lo descubria modulo a modulo. Se avisa una sola vez, arriba del todo.
-let isAdmin = null;
-
-async function checkAdmin() {
-  try {
-    const res = await fetch('/api/status/admin');
-    const data = await res.json();
-    isAdmin = !!data.admin;
-  } catch (e) {
-    isAdmin = true;   // ante la duda no molestamos con el aviso
-  }
-  const banner = _id('admin-banner');
-  if (!banner) return;
-  const dismissed = localStorage.getItem('pcg-admin-banner-dismissed') === '1';
-  banner.classList.toggle('hidden', isAdmin || dismissed);
-}
-
-function dismissAdminBanner() {
-  localStorage.setItem('pcg-admin-banner-dismissed', '1');
-  const banner = _id('admin-banner');
-  if (banner) banner.classList.add('hidden');
-}
-
-async function elevateApp() {
-  if (!confirm('Se cerrara PC Guardian y se volvera a abrir pidiendo permisos de administrador.\n\n¿Continuar?')) return;
-  try {
-    const res = await fetch('/api/admin/elevate', { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      document.body.innerHTML =
-        '<div style="display:flex;height:100vh;align-items:center;justify-content:center;' +
-        'font-family:Segoe UI,sans-serif;color:#9aa0ab;text-align:center;padding:24px">' +
-        'Reiniciando con permisos de administrador\u2026<br><small>Acepta el aviso de Windows. ' +
-        'Puedes cerrar esta pesta\u00f1a.</small></div>';
-    } else {
-      alert(data.message || 'No se pudo reiniciar con permisos de administrador.');
-    }
-  } catch (e) {
-    alert('No se pudo contactar con la aplicacion: ' + e.message);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', checkAdmin);
-
-
-/* ── Historial de escaneos ────────────────────────────────────────────────── */
-// Un escaneo suelto solo dice como esta el equipo ahora. Guardarlos permite
-// responder la pregunta util: que ha cambiado desde la ultima vez.
-
-const STATUS_ES = { ok: 'Correcto', warning: 'Aviso', danger: 'Critico' };
-let _lastScore = null;
-
-async function saveScanToHistory() {
-  try {
-    const res = await fetch('/api/history', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ results: scanResults, score: _lastScore }),
-    });
-    const data = await res.json();
-    if (!data.success) console.warn('historial:', data.message);
-  } catch (e) {
-    console.warn('No se pudo guardar en el historial:', e.message);
-  }
-}
-
-function _fmtFecha(iso) {
-  const d = new Date(iso);
-  if (isNaN(d)) return iso;
-  return d.toLocaleString('es-ES', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-function _scoreClass(score) {
-  if (score == null) return 'muted';
-  return score >= 80 ? 'ok' : score >= 55 ? 'warning' : 'danger';
-}
-
-async function renderHistoryView() {
-  const area = _id('content-area');
-  if (!area) return;
-  _returnCardsToPool();
-  area.innerHTML = '<div class="history-loading">Cargando historial\u2026</div>';
-
-  let scans = [];
-  try {
-    const res = await fetch('/api/history');
-    scans = (await res.json()).scans || [];
-  } catch (e) {
-    area.innerHTML = `<div class="history-empty"><p>No se pudo leer el historial: ${escHtml(e.message)}</p></div>`;
-    return;
-  }
-
-  if (!scans.length) {
-    area.innerHTML = `
-      <div class="history-empty">
-        <span class="empty-emoji">\u{1F553}</span>
-        <p>Todavia no hay escaneos guardados.</p>
-        <p class="history-empty-sub">Cada vez que pulses "Escanear Sistema" se guardara
-           una instantanea aqui, y podras comparar dos cualesquiera.</p>
-      </div>`;
-    return;
-  }
-
-  const maxIssues = Math.max(1, ...scans.map(s => s.issue_count || 0));
-
-  const rows = scans.map((s, i) => {
-    const prev = scans[i + 1];   // el listado viene del mas nuevo al mas viejo
-    let delta = '';
-    if (prev && s.score != null && prev.score != null) {
-      const d = s.score - prev.score;
-      if (d !== 0) {
-        delta = `<span class="history-delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '\u25B2' : '\u25BC'} ${Math.abs(d)}</span>`;
-      }
-    }
-    const barPct = Math.round(((s.issue_count || 0) / maxIssues) * 100);
-    return `
-      <tr>
-        <td><input type="checkbox" class="history-pick" value="${s.id}" onchange="_syncCompareBtn()"></td>
-        <td class="history-date">${escHtml(_fmtFecha(s.created_at))}</td>
-        <td class="history-score s-${_scoreClass(s.score)}">${s.score == null ? '\u2014' : s.score} ${delta}</td>
-        <td>
-          <div class="history-bar"><span style="width:${barPct}%"></span></div>
-          <span class="history-issues">${s.issue_count || 0} incidencia${s.issue_count === 1 ? '' : 's'}</span>
-        </td>
-        <td class="history-mods">${s.module_count} modulos</td>
-        <td><button class="history-del" onclick="deleteHistoryEntry(${s.id})" title="Eliminar">\u2715</button></td>
-      </tr>`;
-  }).join('');
-
-  area.innerHTML = `
-    <div class="history-view">
-      <div class="history-header">
-        <div>
-          <h2>Historial de escaneos</h2>
-          <p class="history-sub">${scans.length} escaneo${scans.length === 1 ? '' : 's'} guardado${scans.length === 1 ? '' : 's'}.
-             Marca dos para ver exactamente que cambio entre ellos.</p>
-        </div>
-        <div class="history-actions">
-          <button id="history-compare-btn" class="history-btn primary" disabled onclick="compareSelectedScans()">
-            Comparar seleccionados
-          </button>
-          <button class="history-btn" onclick="clearHistory()">Vaciar historial</button>
-        </div>
-      </div>
-
-      <table class="history-table">
-        <thead>
-          <tr><th></th><th>Fecha</th><th>Puntuacion</th><th>Incidencias</th><th></th><th></th></tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-
-      <div id="history-diff"></div>
-    </div>`;
-}
-
-function _syncCompareBtn() {
-  const picked = document.querySelectorAll('.history-pick:checked');
-  const btn = _id('history-compare-btn');
-  if (btn) btn.disabled = picked.length !== 2;
-}
-
-async function deleteHistoryEntry(id) {
-  if (!confirm('\u00bfEliminar este escaneo del historial?')) return;
-  await fetch(`/api/history/${id}`, { method: 'DELETE' });
-  renderHistoryView();
-}
-
-async function clearHistory() {
-  if (!confirm('Se borraran todos los escaneos guardados. \u00bfContinuar?')) return;
-  await fetch('/api/history/clear', { method: 'POST' });
-  renderHistoryView();
-}
-
-async function compareSelectedScans() {
-  const picked = [...document.querySelectorAll('.history-pick:checked')].map(c => +c.value);
-  if (picked.length !== 2) return;
-  // El id mas bajo es el escaneo mas antiguo: ese es la referencia.
-  const [a, b] = picked.sort((x, y) => x - y);
-
-  const box = _id('history-diff');
-  box.innerHTML = '<div class="history-loading">Comparando\u2026</div>';
-
-  let d;
-  try {
-    d = await (await fetch(`/api/history/diff?a=${a}&b=${b}`)).json();
-  } catch (e) {
-    box.innerHTML = `<div class="history-empty"><p>${escHtml(e.message)}</p></div>`;
-    return;
-  }
-  if (!d.success) {
-    box.innerHTML = `<div class="history-empty"><p>${escHtml(d.message)}</p></div>`;
-    return;
-  }
-
-  const itemList = (items, cls) => items.length
-    ? `<ul class="diff-items">${items.map(i => `
-        <li class="${cls}">
-          <span class="diff-mod">${escHtml((MODULE_META[i.module] || {}).label || i.module)}</span>
-          <strong>${escHtml(i.name)}</strong>
-          <span class="diff-msg">${escHtml(i.message)}</span>
-          ${i.before ? `<span class="diff-arrow">${escHtml(STATUS_ES[i.before] || i.before)} \u2192 ${escHtml(STATUS_ES[i.status] || i.status)}</span>` : ''}
-        </li>`).join('')}</ul>`
-    : '<p class="diff-none">Nada en esta categoria.</p>';
-
-  const modRows = d.modules.filter(m => m.trend !== 'same').map(m => `
-    <li class="trend-${m.trend}">
-      <strong>${escHtml(m.title)}</strong>
-      <span>${escHtml(STATUS_ES[m.before] || m.before)} \u2192 ${escHtml(STATUS_ES[m.after] || m.after)}</span>
-      <span class="diff-msg">${m.issues_before} \u2192 ${m.issues_after} incidencias</span>
-    </li>`).join('');
-
-  const scoreLine = d.score_delta == null
-    ? ''
-    : `<div class="diff-score ${d.score_delta >= 0 ? 'up' : 'down'}">
-         Puntuacion ${d.a.score} \u2192 ${d.b.score}
-         <span>(${d.score_delta > 0 ? '+' : ''}${d.score_delta})</span>
-       </div>`;
-
-  box.innerHTML = `
-    <div class="diff-panel">
-      <div class="diff-header">
-        <h3>Cambios entre los dos escaneos</h3>
-        <p class="history-sub">${escHtml(_fmtFecha(d.a.created_at))} \u2192 ${escHtml(_fmtFecha(d.b.created_at))}</p>
-        ${scoreLine}
-        <p class="history-sub">${d.issue_delta === 0 ? 'Mismo numero de incidencias.'
-          : d.issue_delta > 0 ? `${d.issue_delta} incidencia(s) mas que antes.`
-          : `${Math.abs(d.issue_delta)} incidencia(s) menos que antes.`}</p>
-      </div>
-
-      ${modRows ? `<section class="diff-section">
-        <h4>Modulos que cambiaron de estado</h4>
-        <ul class="diff-modules">${modRows}</ul>
-      </section>` : ''}
-
-      <section class="diff-section">
-        <h4>Nuevos problemas <span class="diff-count danger">${d.new_issues.length}</span></h4>
-        ${itemList(d.new_issues, 'is-new')}
-      </section>
-
-      <section class="diff-section">
-        <h4>Resueltos <span class="diff-count ok">${d.fixed.length}</span></h4>
-        ${itemList(d.fixed, 'is-fixed')}
-      </section>
-
-      ${d.changed.length ? `<section class="diff-section">
-        <h4>Empeoraron <span class="diff-count warning">${d.changed.length}</span></h4>
-        ${itemList(d.changed, 'is-changed')}
-      </section>` : ''}
-    </div>`;
-
-  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-
 /* ── Procesos activos ─────────────────────────────────────────────────────── */
-// Lo que se abre cuando el equipo va lento: quien se esta comiendo la maquina
-// y un boton para cerrarlo sin salir a buscar el Administrador de tareas.
+async function scanProcesses() {
+  const btn  = document.getElementById('btn-processes');
+  const body = document.getElementById('body-processes');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">⚡</span><p>Obteniendo procesos activos…</p></div>`;
 
-function _barra(pct, clase) {
-  const w = Math.max(2, Math.min(100, pct));
-  return `<div class="proc-bar ${clase}"><span style="width:${w}%"></span></div>`;
+  try {
+    const data = await fetchModule('processes');
+    renderCard('processes', data);
+    scanResults['processes'] = data;
+    updateNavDot('processes', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`;
+  }
 }
 
 function renderProcesses(data) {
-  if (!data.items || !data.items.length) {
+  if (!data.items || data.items.length === 0) {
     return `<div class="card-summary">${escHtml(data.summary)}</div>
-      <div class="empty-state"><span class="empty-emoji">\u{1F4CA}</span><p>${escHtml(data.summary)}</p></div>`;
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">✅</span><p>Sin procesos con consumo elevado.</p></div>`;
   }
 
-  const filas = data.items.map(p => `
-    <div class="proc-row s-${escHtml(p.status)}">
-      <div class="proc-main">
-        <span class="proc-name">${escHtml(p.name)}</span>
-        <span class="proc-pid">PID ${p.pid}</span>
-      </div>
-      <div class="proc-metric">
-        ${_barra(p.cpu, 'cpu')}
-        <span class="proc-num">${p.cpu.toFixed(1)}% CPU</span>
-      </div>
-      <div class="proc-metric">
-        ${_barra(p.ram_pct, 'ram')}
-        <span class="proc-num">${p.ram_mb.toFixed(0)} MB</span>
-      </div>
-      <div class="proc-action">
-        ${p.protected
-          ? '<span class="proc-locked" title="Proceso critico de Windows">Protegido</span>'
-          : `<button class="proc-kill" onclick="killProcess(${p.pid}, '${escHtml(p.name).replace(/'/g, "\\'")}')">Terminar</button>`}
-      </div>
-      <div class="proc-path" title="${escHtml(p.detail)}">${escHtml(p.detail)}</div>
-    </div>`).join('');
+  const rows = data.items.map(item => {
+    const icon     = statusIcon(item.status);
+    const killBtn  = item.killable
+      ? `<button class="btn-kill" onclick="killProcess(${item.pid}, ${JSON.stringify(item.name)})">Terminar</button>`
+      : '';
+    return `
+      <tr class="proc-row">
+        <td class="proc-icon">${icon}</td>
+        <td class="proc-name">${escHtml(item.name)}</td>
+        <td class="proc-stats">${escHtml(item.message)}</td>
+        <td class="proc-pid">${escHtml(item.value)}</td>
+        <td class="proc-user">${escHtml(item.detail || '')}</td>
+        <td>${killBtn}</td>
+      </tr>`;
+  }).join('');
 
-  return `<div class="card-summary">${escHtml(data.summary)}</div>
-    <div class="proc-list">${filas}</div>`;
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="proc-table-wrap">
+      <table class="proc-table">
+        <thead><tr><th></th><th>Proceso</th><th>CPU / RAM</th><th>PID</th><th>Usuario</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 async function killProcess(pid, name) {
-  if (!confirm(`Se cerrara "${name}" (PID ${pid}) de forma inmediata.\n\n` +
-               `El programa perdera lo que no haya guardado. \u00bfContinuar?`)) return;
+  if (!confirm(`¿Terminar el proceso "${name}" (PID ${pid})?\nEsto cerrará la aplicación de forma forzada.`)) return;
   try {
-    const res = await fetch('/api/process/kill', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pid }),
-    });
+    const res  = await fetch(`/api/processes/${pid}/kill`, { method: 'POST' });
     const data = await res.json();
-    alert(data.message);
-    if (data.success) _triggerModuleScan('processes');
+    alert(data.msg || (data.ok ? 'Proceso terminado.' : 'No se pudo terminar el proceso.'));
+    if (data.ok) scanProcesses();
   } catch (e) {
-    alert('No se pudo terminar el proceso: ' + e.message);
+    alert('Error de comunicación: ' + e.message);
   }
 }
 
-/* ── Conexiones salientes ─────────────────────────────────────────────────── */
+/* ── Historial de escaneos ────────────────────────────────────────────────── */
+async function showHistoryView() {
+  const hs   = _id('history-section');
+  const body = _id('history-body');
+  if (!hs) return;
 
-function renderConnections(data) {
-  if (!data.items || !data.items.length) {
-    return `<div class="card-summary">${escHtml(data.summary)}</div>
-      <div class="empty-state"><span class="empty-emoji">\u{1F310}</span><p>${escHtml(data.summary)}</p></div>`;
+  hs.classList.remove('hidden');
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">⏳</span><p>Cargando…</p></div>`;
+
+  try {
+    const res   = await fetch('/api/history');
+    const scans = await res.json();
+    if (body) body.innerHTML = renderHistoryView(scans);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="history-empty">Error al cargar historial: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderHistoryView(scans) {
+  if (!scans || scans.length === 0) {
+    return `<div class="history-empty">Sin escaneos guardados aún.<br>Ejecuta "Escanear Sistema" para registrar el primer análisis.</div>`;
   }
 
-  const MAX_VISIBLE = 8;
-  const fila = (c, oculta) => `
-    <div class="conn-row s-${escHtml(c.status)}${oculta ? ' hidden-item' : ''}">
-      <span class="conn-dot dot-${escHtml(c.status)}"></span>
-      <div class="conn-body">
-        <div class="conn-head">
-          <strong>${escHtml(c.name)}</strong>
-          <span class="conn-endpoint">${escHtml(c.value)}</span>
+  const MODULE_ORDER = ['hardware','security','protection','startup','drivers','network',
+    'connectivity','maintenance','updates','energy','privacy','services','processes'];
+
+  const rows = scans.map(s => {
+    const ts      = s.ts ? s.ts.replace('T', ' ') : '—';
+    const score   = s.score ?? '—';
+    const scoreColor = s.score >= 80 ? '#2ed573' : s.score >= 60 ? '#ffa502' : '#ff4757';
+    const mods    = s.modules || {};
+    const dots    = MODULE_ORDER.map(id => {
+      const m  = mods[id];
+      const st = m ? m.status : 'unknown';
+      const lbl = m ? `${id}: ${m.summary || st}` : id;
+      return `<span class="hist-dot ${st}" title="${escHtml(lbl)}"></span>`;
+    }).join('');
+
+    return `
+      <tr class="hist-row">
+        <td class="hist-ts">${escHtml(ts)}</td>
+        <td class="hist-score" style="color:${scoreColor}">${score}</td>
+        <td><div class="hist-dots">${dots}</div></td>
+        <td style="display:flex;gap:6px;align-items:center">
+          <button class="btn-hist-compare" onclick="showCompare(${JSON.stringify(s).replace(/</g,'\\u003c')})">Comparar</button>
+          <button class="btn-hist-del" onclick="deleteHistoryScan(${s.id}, this)">Borrar</button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead><tr><th>Fecha</th><th>Score</th><th>Módulos</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteHistoryScan(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await fetch(`/api/history/${id}`, { method: 'DELETE' });
+    showHistoryView();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Borrar'; }
+    alert('Error: ' + e.message);
+  }
+}
+
+/* ── Comparar escaneos ────────────────────────────────────────────────────── */
+function showCompare(historicScan) {
+  const hasCurrent = Object.keys(scanResults).length > 0;
+  if (!hasCurrent) {
+    alert('Ejecuta primero "Escanear Sistema" para tener datos actuales con los que comparar.');
+    return;
+  }
+  const body = _id('history-body');
+  if (body) body.innerHTML = renderCompare(historicScan);
+}
+
+function renderCompare(hist) {
+  const _STATUS_SCORE = { ok: 0, warning: 1, danger: 2 };
+  const _STATUS_LABEL = { ok: '✓ ok', warning: '~ warning', danger: '✗ danger' };
+  const _STATUS_COLOR = { ok: '#2ed573', warning: '#ffa502', danger: '#ff4757' };
+
+  const moduleIds = Array.from(new Set([
+    ...Object.keys(hist.modules || {}),
+    ...Object.keys(scanResults).filter(id => scanResults[id] && scanResults[id].status),
+  ]));
+
+  const rows = moduleIds.map(id => {
+    const hMod  = (hist.modules || {})[id];
+    const cMod  = scanResults[id];
+    if (!hMod && !cMod) return '';
+
+    const hSt   = hMod ? hMod.status : null;
+    const cSt   = cMod ? cMod.status : null;
+    const hScore = hSt ? (_STATUS_SCORE[hSt] ?? 3) : 3;
+    const cScore = cSt ? (_STATUS_SCORE[cSt] ?? 3) : 3;
+
+    let change = '→', changeColor = 'var(--text-muted)';
+    if (hSt && cSt) {
+      if (cScore < hScore)      { change = '↑ Mejoró';    changeColor = '#2ed573'; }
+      else if (cScore > hScore) { change = '↓ Empeoró';   changeColor = '#ff4757'; }
+      else                      { change = '→ Sin cambio'; }
+    } else if (!hSt && cSt) {
+      change = '★ Nuevo'; changeColor = '#74b9ff';
+    }
+
+    const meta  = MODULE_META[id] || { label: id, emoji: '•' };
+    const hCell = hSt ? `<span style="color:${_STATUS_COLOR[hSt]}">${_STATUS_LABEL[hSt]}</span>` : '<span style="color:var(--text-muted)">—</span>';
+    const cCell = cSt ? `<span style="color:${_STATUS_COLOR[cSt]}">${_STATUS_LABEL[cSt]}</span>` : '<span style="color:var(--text-muted)">—</span>';
+
+    return `
+      <tr class="hist-row">
+        <td style="white-space:nowrap">${meta.emoji} ${escHtml(meta.label)}</td>
+        <td>${hCell}</td>
+        <td>${cCell}</td>
+        <td style="color:${changeColor};font-weight:600;white-space:nowrap">${change}</td>
+      </tr>`;
+  }).filter(Boolean).join('');
+
+  const ts = hist.ts ? hist.ts.replace('T', ' ') : '—';
+  const scoreColor = hist.score >= 80 ? '#2ed573' : hist.score >= 60 ? '#ffa502' : '#ff4757';
+
+  return `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button class="module-back-btn" onclick="showHistoryView()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/>
+        </svg> Volver al historial
+      </button>
+      <span style="font-size:0.82rem;color:var(--text-soft)">
+        Escaneo histórico del <strong>${escHtml(ts)}</strong>
+        — score <strong style="color:${scoreColor}">${hist.score ?? '—'}</strong>
+      </span>
+    </div>
+    <div class="hist-table-wrap">
+      <table class="hist-table">
+        <thead><tr><th>Módulo</th><th>Histórico</th><th>Actual</th><th>Cambio</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+/* ── Programas instalados ─────────────────────────────────────────────────── */
+async function scanSoftware() {
+  const btn  = document.getElementById('btn-software');
+  const body = document.getElementById('body-software');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Cargando…`;
+  }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">📦</span><p>Leyendo registro de Windows…</p></div>`;
+  try {
+    const data = await fetchModule('software');
+    renderCard('software', data);
+    scanResults['software'] = data;
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`;
+  }
+}
+
+function renderSoftware(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">📭</span><p>No se encontraron programas.</p></div>`;
+  }
+
+  let filterHtml = `
+    <div class="soft-filter-bar">
+      <input type="text" class="soft-search" id="soft-search-input"
+        placeholder="Filtrar programas…" oninput="filterSoftware(this.value)">
+      <span class="soft-count" id="soft-count">${data.items.length} programas</span>
+    </div>`;
+
+  const rows = data.items.map((item, idx) => `
+    <tr class="soft-row" data-name="${escHtml(item.name.toLowerCase())}">
+      <td class="soft-name">${escHtml(item.name)}</td>
+      <td class="soft-version">${escHtml(item.version)}</td>
+      <td class="soft-pub">${escHtml(item.publisher)}</td>
+      <td class="soft-date">${escHtml(item.date)}</td>
+      <td class="soft-size">${item.size_mb > 0 ? item.size_mb + ' MB' : '—'}</td>
+      <td><button class="btn-uninstall" onclick="uninstallSoftware(${JSON.stringify(item.name).replace(/</g,'\\u003c')}, this)">Desinstalar</button></td>
+    </tr>`).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    ${filterHtml}
+    <div class="soft-table-wrap">
+      <table class="soft-table" id="soft-table">
+        <thead><tr><th>Nombre</th><th>Versión</th><th>Fabricante</th><th>Instalado</th><th>Tamaño</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function filterSoftware(q) {
+  const rows  = document.querySelectorAll('#soft-table .soft-row');
+  const lower = q.toLowerCase();
+  let visible = 0;
+  rows.forEach(r => {
+    const match = r.dataset.name.includes(lower);
+    r.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  const cnt = document.getElementById('soft-count');
+  if (cnt) cnt.textContent = `${visible} programas`;
+}
+
+async function uninstallSoftware(name, btn) {
+  if (!confirm(`¿Desinstalar "${name}"?\nEsto ejecutará winget uninstall de forma silenciosa.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Desinstalando…'; }
+  try {
+    const res  = await fetch('/api/software/uninstall', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    alert(data.msg || (data.ok ? 'Desinstalado.' : 'No se pudo desinstalar.'));
+    if (data.ok) scanSoftware();
+    else if (btn) { btn.disabled = false; btn.textContent = 'Desinstalar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Desinstalar'; }
+  }
+}
+
+/* ── Arranque — renderer con acciones ────────────────────────────────────── */
+function renderStartup(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">✅</span><p>Sin entradas de arranque detectadas.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon   = statusIcon(item.status);
+    const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    const canDisable = item.fix_name && item.value !== 'Sistema';
+    const disableBtn = canDisable
+      ? `<button class="btn-quickfix" onclick="doDisableStartup(${JSON.stringify(item.fix_hive)},${JSON.stringify(item.fix_key)},${JSON.stringify(item.fix_name)},this)">✕ Deshabilitar</button>`
+      : '';
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${icon}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+          ${disableBtn}
         </div>
-        <div class="conn-msg">${escHtml(c.message)}</div>
-        <div class="conn-path">${escHtml(c.detail)}</div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}`;
+}
+
+/* ── Quickfix handlers ───────────────────────────────────────────────────── */
+async function doFixEnergyHigh(btn) {
+  if (!confirm('¿Cambiar el plan de energía a Alto Rendimiento?')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    const res  = await fetch('/api/quickfix/energy-high', { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('energy');
+    else if (btn) { btn.disabled = false; btn.textContent = '⚡ Aplicar Alto Rendimiento'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Aplicar Alto Rendimiento'; }
+  }
+}
+
+async function doFixTelemetry(btn) {
+  if (!confirm('¿Desactivar la telemetría de Windows?\nSe requiere reinicio para que el cambio tenga efecto.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    const res  = await fetch('/api/quickfix/telemetry-off', { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('privacy');
+    else if (btn) { btn.disabled = false; btn.textContent = '🔕 Desactivar telemetría'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🔕 Desactivar telemetría'; }
+  }
+}
+
+/* ── DNS activo ──────────────────────────────────────────────────────────── */
+function renderDns(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">🌐</span><p>Sin información DNS disponible.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon   = statusIcon(item.status);
+    const detail = item.detail ? `<span class="item-detail">${escHtml(item.detail)}</span>` : '';
+    let fixBtns  = '';
+    if (item.fix_available && item.servers && item.servers.length > 0) {
+      const iface = item.interface;
+      fixBtns = `
+        <div class="dns-fix-bar">
+          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'1.1.1.1','1.0.0.1',this)">
+            🔒 Cloudflare (1.1.1.1)
+          </button>
+          <button class="btn-quickfix" onclick="doSetDns(${JSON.stringify(iface)},'8.8.8.8','8.8.4.4',this)">
+            🔍 Google (8.8.8.8)
+          </button>
+        </div>`;
+    }
+    return `
+      <div class="item ${escHtml(item.status)}">
+        <div class="item-icon ${escHtml(item.status)}">${icon}</div>
+        <div class="item-body">
+          <span class="item-name">${escHtml(item.name)}</span>
+          <span class="item-msg">${escHtml(item.message)}</span>
+          ${detail}
+          ${fixBtns}
+        </div>
+        <span class="item-value ${escHtml(item.status)}">${escHtml(item.value)}</span>
+      </div>`;
+  }).join('');
+
+  return `<div class="card-summary">${escHtml(data.summary)}</div>${rows}`;
+}
+
+async function doSetDns(iface, dns1, dns2, btn) {
+  if (!confirm(`¿Cambiar el DNS de "${iface}" a ${dns1}?`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    const res  = await fetch('/api/dns/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interface: iface, dns1, dns2 }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('dns');
+    else if (btn) { btn.disabled = false; btn.textContent = btn.textContent.replace('…', ''); }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+/* ── Reglas de firewall ──────────────────────────────────────────────────── */
+async function scanFirewallRules() {
+  const btn  = document.getElementById('btn-firewall-rules');
+  const body = document.getElementById('body-firewall-rules');
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analizando…`; }
+  if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji spin-anim" style="display:inline-block">🛡️</span><p>Obteniendo reglas del firewall…</p></div>`;
+  try {
+    const data = await fetchModule('firewall-rules');
+    renderCard('firewall-rules', data);
+    scanResults['firewall-rules'] = data;
+    updateNavDot('firewall-rules', data.status);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analizar`; }
+}
+
+function renderFirewallRules(data) {
+  if (!data.items || data.items.length === 0) {
+    return `<div class="card-summary">${escHtml(data.summary)}</div>
+      <div class="empty-state" style="padding-top:20px"><span class="empty-emoji">✅</span><p>Sin reglas no estándar habilitadas.</p></div>`;
+  }
+
+  const rows = data.items.map(item => {
+    const icon = statusIcon(item.status);
+    const delBtn = `<button class="btn-kill" onclick="deleteFirewallRule(${JSON.stringify(item.rule_name).replace(/</g,'\\u003c')},this)">Eliminar</button>`;
+    return `
+      <tr class="proc-row">
+        <td class="proc-icon">${icon}</td>
+        <td class="proc-name" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</td>
+        <td class="proc-stats">${escHtml(item.message)}</td>
+        <td>${delBtn}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="card-summary">${escHtml(data.summary)}</div>
+    <div class="proc-table-wrap">
+      <table class="proc-table">
+        <thead><tr><th></th><th>Regla</th><th>Detalles</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteFirewallRule(name, btn) {
+  if (!confirm(`¿Eliminar la regla de firewall "${name}"?`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
+  try {
+    const res  = await fetch('/api/firewall-rules/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) scanFirewallRules();
+    else if (btn) { btn.disabled = false; btn.textContent = 'Eliminar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Eliminar'; }
+  }
+}
+
+/* ── Tendencias de rendimiento ───────────────────────────────────────────── */
+async function showPerfHistoryView() {
+  const sec  = _id('perf-history-section');
+  const body = _id('perf-history-body');
+  if (!sec) return;
+  sec.classList.remove('hidden');
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">⏳</span><p>Cargando…</p></div>`;
+  try {
+    const res  = await fetch('/api/perf/history');
+    const data = await res.json();
+    if (body) body.innerHTML = renderPerfHistoryView(data);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="history-empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function _svgSparkline(values, color, h = 70) {
+  if (!values || values.length < 2) return `<div class="perf-hist-empty">Sin datos</div>`;
+  const w    = 600;
+  const max  = Math.max(...values, 1);
+  const pts  = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * w;
+    const y = h - (v / max) * (h - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const areaClose = `${w},${h} 0,${h}`;
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" class="perf-spark-svg">
+    <polygon points="${pts} ${areaClose}" fill="${color}" fill-opacity="0.12" stroke="none"/>
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function renderPerfHistoryView(snaps) {
+  if (!snaps || snaps.length === 0) {
+    return `<div class="history-empty">Sin snapshots registrados aún.<br>PC Guardian guarda uno cada 5 minutos mientras está en ejecución.</div>`;
+  }
+
+  const cpu  = snaps.map(s => s.cpu  ?? 0);
+  const ram  = snaps.map(s => s.ram  ?? 0);
+  const disk = snaps.map(s => s.disk ?? 0);
+  const gpu  = snaps.map(s => s.gpu  ?? null).filter(v => v !== null);
+
+  const tsFirst = snaps[0]?.ts?.replace('T',' ') || '';
+  const tsLast  = snaps[snaps.length - 1]?.ts?.replace('T',' ') || '';
+
+  const avgOf = arr => arr.length ? (arr.reduce((a,b) => a+b, 0) / arr.length).toFixed(1) : '—';
+  const maxOf = arr => arr.length ? Math.max(...arr).toFixed(1) : '—';
+
+  const charts = [
+    { label: 'CPU',    values: cpu,  color: '#4f8ef7' },
+    { label: 'RAM',    values: ram,  color: '#a29bfe' },
+    { label: 'Disco',  values: disk, color: '#fdcb6e' },
+  ];
+  if (gpu.length > 1) charts.push({ label: 'GPU', values: gpu, color: '#00cec9' });
+
+  const chartHtml = charts.map(c => `
+    <div class="perf-chart-block">
+      <div class="perf-chart-header">
+        <span class="perf-chart-label">${c.label}</span>
+        <span class="perf-chart-stats">
+          Promedio <strong>${avgOf(c.values)}%</strong> · Máx <strong>${maxOf(c.values)}%</strong>
+        </span>
+      </div>
+      <div class="perf-chart-body">${_svgSparkline(c.values, c.color)}</div>
+      <div class="perf-chart-axis">
+        <span>${escHtml(tsFirst)}</span>
+        <span>${snaps.length} puntos</span>
+        <span>${escHtml(tsLast)}</span>
+      </div>
+    </div>`).join('');
+
+  return `
+    <p class="perf-hist-meta">Últimas 24 h · ${snaps.length} snapshots</p>
+    <div class="perf-charts-grid">${chartHtml}</div>`;
+}
+
+async function doDisableStartup(hive, key, name, btn) {
+  if (!confirm(`¿Deshabilitar "${name}" del arranque automático?\nPuedes volver a habilitarlo desde el Administrador de tareas.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Deshabilitando…'; }
+  try {
+    const res  = await fetch('/api/quickfix/disable-startup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hive, key, name }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) _triggerModuleScan('startup');
+    else if (btn) { btn.disabled = false; btn.textContent = '✕ Deshabilitar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✕ Deshabilitar'; }
+  }
+}
+
+/* ── Benchmark rápido ────────────────────────────────────────────────────── */
+async function runBenchmark() {
+  const btn  = document.getElementById('btn-benchmark');
+  const body = document.getElementById('body-benchmark');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Ejecutando…`;
+  }
+  if (body) body.innerHTML = `
+    <div class="bench-running">
+      <div class="bench-phase">
+        <span class="spin-anim" style="display:inline-block;font-size:1.4rem">⚡</span>
+        <span>Ejecutando benchmark… esto puede tardar hasta 10 segundos.</span>
+      </div>
+      <div class="bench-steps">
+        <div class="bench-step">🔢 CPU: criba de Eratóstenes hasta 10 000 000</div>
+        <div class="bench-step">💾 Disco: escritura + lectura de 32 MB</div>
       </div>
     </div>`;
 
-  const visibles = data.items.slice(0, MAX_VISIBLE).map(c => fila(c, false)).join('');
-  const resto    = data.items.slice(MAX_VISIBLE);
-  const ocultas  = resto.map(c => fila(c, true)).join('');
-  const boton    = resto.length
-    ? `<button class="show-more-btn">Mostrar ${resto.length} m\u00e1s\u2026</button>` : '';
+  try {
+    const res  = await fetch('/api/benchmark/run', { method: 'POST' });
+    const data = await res.json();
+    body.innerHTML = renderBenchmark(data);
+    const btnB = document.getElementById('btn-benchmark');
+    if (btnB) btnB.style.display = '';
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
 
-  return `<div class="card-summary">${escHtml(data.summary)}</div>
-    <div class="conn-list">${visibles}${ocultas}${boton}</div>`;
-}
-
-/* ── Tema claro / oscuro ──────────────────────────────────────────────────── */
-// Se aplica antes del primer render para no mostrar un fogonazo oscuro a quien
-// tiene el sistema en claro. La preferencia manual gana sobre la del sistema.
-
-const THEME_KEY = 'pcg-theme';
-
-function _temaDelSistema() {
-  return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-    ? 'light' : 'dark';
-}
-
-function aplicarTema(tema) {
-  document.documentElement.setAttribute('data-theme', tema);
-  const btn = _id('theme-btn');
   if (btn) {
-    btn.title = tema === 'light' ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro';
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Ejecutar`;
   }
 }
 
-function toggleTheme() {
-  const actual = document.documentElement.getAttribute('data-theme') || _temaDelSistema();
-  const nuevo = actual === 'light' ? 'dark' : 'light';
-  try { localStorage.setItem(THEME_KEY, nuevo); } catch (e) { /* modo privado */ }
-  aplicarTema(nuevo);
+/* ══════════════════════════════════════════════════════════════════════════
+   MAPA DE DISCO
+   ══════════════════════════════════════════════════════════════════════════ */
+let _diskmapStack = [];  // historial de rutas para navegación breadcrumb
+
+function showDiskmapSection() {
+  const sec = _id('diskmap-section');
+  if (sec) sec.classList.remove('hidden');
+  if (!_id('diskmap-path-input').value) {
+    _id('diskmap-path-input').value = '%USERPROFILE%';
+  }
 }
 
-(function iniciarTema() {
-  let guardado = null;
-  try { guardado = localStorage.getItem(THEME_KEY); } catch (e) { /* modo privado */ }
-  aplicarTema(guardado || _temaDelSistema());
+async function scanDiskmap(path) {
+  const btn   = _id('diskmap-scan-btn');
+  const body  = _id('diskmap-body');
+  const input = _id('diskmap-path-input');
+  const scanPath = path || input.value.trim() || '%USERPROFILE%';
 
-  // Si el usuario no ha elegido, se sigue al sistema cuando cambie.
-  if (!guardado && window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ev => {
-      let elegido = null;
-      try { elegido = localStorage.getItem(THEME_KEY); } catch (e) { /* modo privado */ }
-      if (!elegido) aplicarTema(ev.matches ? 'light' : 'dark');
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Escaneando…`; }
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">💾</span><p>Calculando tamaños de carpetas…</p></div>`;
+
+  try {
+    const res  = await fetch('/api/diskmap/scan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path: scanPath }),
     });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    _diskmapStack = [];
+    input.value = data.path;
+    renderDiskmapView(data);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>${escHtml(e.message)}</p></div>`;
   }
-})();
+
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Escanear`; }
+}
+
+async function drillDown(path, name) {
+  _diskmapStack.push({ path: _id('diskmap-path-input').value, name });
+  _id('diskmap-path-input').value = path;
+  await scanDiskmap(path);
+}
+
+function renderDiskmapView(data) {
+  const body = _id('diskmap-body');
+  const bc   = _id('diskmap-breadcrumb');
+
+  // Breadcrumb
+  let bcHtml = `<span class="diskmap-bc-item" onclick="scanDiskmap('${escHtml(data.parent)}')">↑ Subir</span>`;
+  _diskmapStack.forEach((item, i) => {
+    bcHtml += ` / <span class="diskmap-bc-item" onclick="_goBackTo(${i})">${escHtml(item.name)}</span>`;
+  });
+  bcHtml += ` / <strong>${escHtml(data.path.split(/[\\/]/).pop() || data.path)}</strong>`;
+  if (bc) bc.innerHTML = bcHtml;
+
+  if (!data.children || data.children.length === 0) {
+    if (body) body.innerHTML = `<div class="empty-state" style="padding:20px 0"><span class="empty-emoji">📭</span><p>Carpeta vacía o sin acceso.</p></div>`;
+    return;
+  }
+
+  // Treemap SVG
+  const W = 800, H = 480;
+  const items = data.children.filter(c => c.size > 0);
+  const layout = _layoutTreemap(items, 2, 2, W - 4, H - 4);
+
+  const PALETTE = ['#4f8ef7','#a29bfe','#00b894','#fdcb6e','#e17055',
+                   '#00cec9','#fd79a8','#6c5ce7','#55efc4','#ffeaa7',
+                   '#fab1a0','#74b9ff'];
+
+  const rects = layout.map((node, i) => {
+    const color = node.is_dir
+      ? PALETTE[i % PALETTE.length]
+      : 'rgba(150,150,150,0.5)';
+    const label = node.w > 40 && node.h > 20
+      ? `<text x="${(node.x + node.w / 2).toFixed(0)}" y="${(node.y + Math.min(node.h / 2, 14)).toFixed(0)}"
+               text-anchor="middle" dominant-baseline="middle"
+               font-size="${Math.min(12, node.h * 0.3, node.w * 0.08).toFixed(0)}"
+               fill="white" fill-opacity="0.9" pointer-events="none">${escHtml(node.name.slice(0, 20))}</text>`
+      : '';
+    const click = node.is_dir
+      ? `onclick="drillDown(${JSON.stringify(node.path).replace(/</g,'\\u003c')}, ${JSON.stringify(node.name).replace(/</g,'\\u003c')})" style="cursor:pointer"`
+      : '';
+    return `
+      <g ${click}>
+        <rect x="${node.x.toFixed(1)}" y="${node.y.toFixed(1)}"
+              width="${Math.max(1,node.w-1).toFixed(1)}" height="${Math.max(1,node.h-1).toFixed(1)}"
+              fill="${color}" fill-opacity="0.82" stroke="var(--bg)" stroke-width="1" rx="2">
+          <title>${escHtml(node.name)} — ${escHtml(node.size_label)}</title>
+        </rect>
+        ${label}
+      </g>`;
+  }).join('');
+
+  const timedOut = data.timed_out ? `<div class="diskmap-warning">⚠ Escaneo incompleto — tiempo agotado. Prueba una carpeta más pequeña.</div>` : '';
+
+  if (body) body.innerHTML = `
+    ${timedOut}
+    <div class="diskmap-meta">Total: <strong>${escHtml(data.size_label)}</strong> · ${data.children.length} entradas</div>
+    <div class="diskmap-svg-wrap">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" class="diskmap-svg">
+        ${rects}
+      </svg>
+    </div>
+    <div class="diskmap-legend">
+      <span class="diskmap-legend-dir">■ Carpeta (clic para entrar)</span>
+      <span class="diskmap-legend-file">■ Archivo</span>
+    </div>`;
+}
+
+function _layoutTreemap(items, x, y, w, h) {
+  if (!items.length) return [];
+  const sorted = [...items].sort((a, b) => b.size - a.size);
+  const total  = sorted.reduce((s, i) => s + i.size, 0) || 1;
+  const result = [];
+  let rx = x, ry = y, rw = w, rh = h;
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (rw < 2 || rh < 2) break;
+    const rem = sorted.slice(i).reduce((s, x) => s + x.size, 0) || 1;
+    const ratio = sorted[i].size / rem;
+    let nx, ny, nw, nh;
+    if (rw >= rh) {
+      nw = Math.max(2, rw * ratio); nh = rh;
+      nx = rx; ny = ry; rx += nw; rw -= nw;
+    } else {
+      nw = rw; nh = Math.max(2, rh * ratio);
+      nx = rx; ny = ry; ry += nh; rh -= nh;
+    }
+    result.push({ ...sorted[i], x: nx, y: ny, w: nw, h: nh });
+  }
+  return result;
+}
+
+async function _goBackTo(idx) {
+  const target = _diskmapStack[idx];
+  _diskmapStack = _diskmapStack.slice(0, idx);
+  _id('diskmap-path-input').value = target.path;
+  await scanDiskmap(target.path);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ARCHIVOS DUPLICADOS
+   ══════════════════════════════════════════════════════════════════════════ */
+function showDuplicatesSection() {
+  const sec = _id('duplicates-section');
+  if (sec) sec.classList.remove('hidden');
+  if (!_id('dup-path-input').value) {
+    _id('dup-path-input').value = '%USERPROFILE%';
+  }
+}
+
+async function scanDuplicates() {
+  const btn   = _id('dup-scan-btn');
+  const body  = _id('dup-body');
+  const path  = _id('dup-path-input').value.trim() || '%USERPROFILE%';
+
+  if (btn) { btn.disabled = true; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="13" height="13" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Buscando…`; }
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:40px 0"><span class="empty-emoji spin-anim" style="display:inline-block">🔍</span><p>Calculando hashes MD5… puede tardar varios segundos.</p></div>`;
+
+  try {
+    const res  = await fetch('/api/duplicates/scan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (body) body.innerHTML = renderDuplicates(data);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="empty-state"><span class="empty-emoji">⚠️</span><p>${escHtml(e.message)}</p></div>`;
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Buscar duplicados`; }
+}
+
+function renderDuplicates(data) {
+  if (!data.groups || data.groups.length === 0) {
+    return `<div class="empty-state" style="padding:30px 0">
+      <span class="empty-emoji">✅</span>
+      <p>No se encontraron archivos duplicados en <code>${escHtml(data.path)}</code>.<br>
+      Archivos analizados: ${data.scanned || 0}</p>
+    </div>`;
+  }
+
+  const summary = `
+    <div class="dup-summary">
+      <span>📂 ${data.path ? escHtml(data.path) : ''}</span>
+      <span>🔍 ${data.scanned} archivos analizados</span>
+      <span>📋 ${data.total_groups} grupos de duplicados</span>
+      <span style="color:#ff4757;font-weight:600">💾 ${escHtml(data.wasted_label)} recuperables</span>
+    </div>`;
+
+  const groups = data.groups.map((g, gi) => {
+    const files = g.files.map((f, fi) => {
+      const isKeep = fi === 0;
+      const dt = new Date(f.mtime * 1000).toLocaleDateString('es-ES', {day:'2-digit',month:'2-digit',year:'numeric'});
+      return `
+        <div class="dup-file ${isKeep ? 'dup-keep' : 'dup-delete'}">
+          <span class="dup-file-badge">${isKeep ? '✓ Conservar' : '✕ Eliminar'}</span>
+          <span class="dup-file-name" title="${escHtml(f.path)}">${escHtml(f.name)}</span>
+          <span class="dup-file-meta">${escHtml(f.size_label)} · ${dt}</span>
+          <span class="dup-file-path">${escHtml(f.path)}</span>
+        </div>`;
+    }).join('');
+
+    const delPaths = g.files.slice(1).map(f => f.path);
+    const delJson  = JSON.stringify(delPaths).replace(/</g, '\\u003c');
+
+    return `
+      <div class="dup-group" id="dup-group-${gi}">
+        <div class="dup-group-header" onclick="this.closest('.dup-group').classList.toggle('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="dup-chevron">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span class="dup-group-title">${g.count} copias · ${escHtml(g.size_label)} c/u</span>
+          <span class="dup-group-waste" style="color:#ff4757">−${escHtml(g.wasted_label)}</span>
+          <button class="btn-kill" onclick="event.stopPropagation();deleteDuplicates(${delJson},'dup-group-${gi}')">
+            Eliminar duplicados
+          </button>
+        </div>
+        <div class="dup-group-body">${files}</div>
+      </div>`;
+  }).join('');
+
+  return summary + `<div class="dup-groups">${groups}</div>`;
+}
+
+async function deleteDuplicates(paths, groupId) {
+  if (!confirm(`¿Eliminar ${paths.length} archivo(s) duplicado(s)?\nSe conservará el más reciente.`)) return;
+  try {
+    const res  = await fetch('/api/duplicates/delete', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ paths }),
+    });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) {
+      const el = _id(groupId);
+      if (el) el.style.opacity = '0.4';
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NOTIFICACIONES PROGRAMADAS
+   ══════════════════════════════════════════════════════════════════════════ */
+async function showNotificationsSection() {
+  const sec  = _id('notifications-section');
+  const body = _id('notifications-body');
+  if (sec) sec.classList.remove('hidden');
+  if (body) body.innerHTML = `<div class="empty-state" style="padding:30px 0"><span class="empty-emoji spin-anim" style="display:inline-block">⏳</span></div>`;
+
+  try {
+    const res  = await fetch('/api/notifications/status');
+    const data = await res.json();
+    if (body) body.innerHTML = renderNotifications(data.enabled);
+  } catch (e) {
+    if (body) body.innerHTML = `<div class="history-empty">Error: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderNotifications(enabled) {
+  const stColor = enabled ? '#2ed573' : 'var(--text-muted)';
+  const stLabel = enabled ? 'Activo' : 'Inactivo';
+  const stDesc  = enabled
+    ? 'PC Guardian se ejecutará automáticamente al arrancar Windows y enviará una notificación si detecta problemas críticos.'
+    : 'El escaneo automático al inicio está desactivado. Actívalo para recibir alertas sin tener que abrir la aplicación.';
+
+  return `
+    <div class="notif-card">
+      <div class="notif-header">
+        <div class="notif-icon">🔔</div>
+        <div class="notif-info">
+          <div class="notif-title">Escaneo al arrancar Windows</div>
+          <div class="notif-status" style="color:${stColor}">${stLabel}</div>
+        </div>
+        <button class="notif-toggle ${enabled ? 'notif-on' : 'notif-off'}" id="notif-toggle-btn"
+                onclick="toggleNotifications(${enabled})">
+          ${enabled ? 'Desactivar' : 'Activar'}
+        </button>
+      </div>
+      <p class="notif-desc">${stDesc}</p>
+      <div class="notif-details">
+        <div class="notif-detail-item">
+          <span class="notif-detail-icon">⚡</span>
+          <span>Escaneo ligero: seguridad, protección, actualizaciones, mantenimiento y privacidad</span>
+        </div>
+        <div class="notif-detail-item">
+          <span class="notif-detail-icon">💬</span>
+          <span>Notificación toast de Windows solo si hay problemas críticos o advertencias</span>
+        </div>
+        <div class="notif-detail-item">
+          <span class="notif-detail-icon">🔑</span>
+          <span>Se registra en <code>HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run</code></span>
+        </div>
+      </div>
+      <button class="btn-quickfix" style="margin-top:16px" onclick="testNotification()">
+        🔔 Enviar notificación de prueba
+      </button>
+    </div>`;
+}
+
+async function toggleNotifications(currentEnabled) {
+  const btn = _id('notif-toggle-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const endpoint = currentEnabled ? '/api/notifications/disable' : '/api/notifications/enable';
+  try {
+    const res  = await fetch(endpoint, { method: 'POST' });
+    const data = await res.json();
+    alert(data.msg);
+    if (data.ok) showNotificationsSection();
+    else if (btn) { btn.disabled = false; btn.textContent = currentEnabled ? 'Desactivar' : 'Activar'; }
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; }
+  }
+}
+
+async function testNotification() {
+  try {
+    const res  = await fetch('/api/notifications/test', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) alert(data.msg);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+function renderBenchmark(data) {
+  const scoreColor = data.score >= 70 ? '#2ed573' : data.score >= 40 ? '#ffa502' : '#ff4757';
+  const scoreLabel = data.score >= 70 ? 'Bueno' : data.score >= 40 ? 'Aceptable' : 'Lento';
+
+  let deltaHtml = '';
+  if (data.delta_score !== null && data.delta_score !== undefined) {
+    const sign  = data.delta_score >= 0 ? '+' : '';
+    const color = data.delta_score > 0 ? '#2ed573' : data.delta_score < 0 ? '#ff4757' : 'var(--text-muted)';
+    deltaHtml = `<span class="bench-delta" style="color:${color}">${sign}${data.delta_score} vs anterior</span>`;
+  }
+
+  // Barras de referencia (máx visual = 3000 ms CPU / 1000 MB/s disco)
+  const cpuPct   = Math.min(100, Math.round((3000 - data.cpu_ms)  / 30));
+  const writePct = Math.min(100, Math.round(data.disk_write / 10));
+  const readPct  = Math.min(100, Math.round(data.disk_read  / 10));
+
+  const metricBar = (pct, color) =>
+    `<div class="bench-bar-track"><div class="bench-bar-fill" style="width:${Math.max(2,pct)}%;background:${color}"></div></div>`;
+
+  // Tabla histórico
+  let histHtml = '';
+  if (data.history && data.history.length > 1) {
+    const rows = data.history.map((r, i) => {
+      const ts  = (r.ts || '').replace('T', ' ');
+      const sc  = r.score ?? '—';
+      const scColor = r.score >= 70 ? '#2ed573' : r.score >= 40 ? '#ffa502' : '#ff4757';
+      const isCurrent = i === 0;
+      return `
+        <tr class="hist-row${isCurrent ? ' bench-current-row' : ''}">
+          <td class="hist-ts">${escHtml(ts)}</td>
+          <td style="text-align:center;font-weight:600;color:${scColor}">${sc}</td>
+          <td class="soft-version">${r.cpu_ms != null ? r.cpu_ms + ' ms' : '—'}</td>
+          <td class="soft-version">${r.disk_write != null ? r.disk_write + ' MB/s' : '—'}</td>
+          <td class="soft-version">${r.disk_read  != null ? r.disk_read  + ' MB/s' : '—'}</td>
+        </tr>`;
+    }).join('');
+
+    histHtml = `
+      <div class="bench-hist-title">Historial de ejecuciones</div>
+      <div class="hist-table-wrap" style="margin-top:8px">
+        <table class="hist-table">
+          <thead><tr><th>Fecha</th><th>Score</th><th>CPU</th><th>Escritura</th><th>Lectura</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  return `
+    <div class="bench-results">
+      <div class="bench-score-block">
+        <div class="bench-score-ring" style="--bench-color:${scoreColor}">
+          <span class="bench-score-num" style="color:${scoreColor}">${data.score}</span>
+          <span class="bench-score-sub">/ 100</span>
+        </div>
+        <div class="bench-score-info">
+          <div class="bench-score-label" style="color:${scoreColor}">${scoreLabel}</div>
+          ${deltaHtml}
+          <div class="bench-primes">🔢 ${(data.primes || 0).toLocaleString()} primos encontrados</div>
+        </div>
+      </div>
+
+      <div class="bench-metrics">
+        <div class="bench-metric">
+          <span class="bench-metric-name">CPU (criba 10M)</span>
+          <span class="bench-metric-val">${data.cpu_ms} ms</span>
+          ${metricBar(cpuPct, '#4f8ef7')}
+          <span class="bench-metric-hint">Menos es mejor</span>
+        </div>
+        <div class="bench-metric">
+          <span class="bench-metric-name">Disco escritura</span>
+          <span class="bench-metric-val">${data.disk_write} MB/s</span>
+          ${metricBar(writePct, '#fdcb6e')}
+        </div>
+        <div class="bench-metric">
+          <span class="bench-metric-name">Disco lectura</span>
+          <span class="bench-metric-val">${data.disk_read} MB/s</span>
+          ${metricBar(readPct, '#00b894')}
+        </div>
+      </div>
+    </div>
+    ${histHtml}`;
+}

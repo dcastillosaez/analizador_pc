@@ -1,201 +1,162 @@
-"""Conexiones TCP salientes establecidas ahora mismo.
-
-Responde a "¿qué está hablando con Internet en este momento y hacia dónde?".
-Complementa a network.py, que mira puertos a la escucha (entrantes); aquí se
-mira el sentido contrario, que es por donde se va la información.
-"""
-
+"""Conexiones TCP establecidas hacia el exterior — psutil + resolución DNS."""
 import ipaddress
 import socket
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeout
 
 import psutil
 
-from ._text import looks_random
+# Puertos cuya presencia en exterior es siempre esperada
+_SAFE_PORTS = {80, 443, 853, 8080, 8443}
 
-# Marcar como sospechosa toda ruta fuera de Program Files daba demasiados falsos
-# positivos: media aplicación moderna (Chrome, Discord, Slack, cualquier Electron)
-# se instala en el perfil del usuario. Se invierte la lógica: solo se avisa de
-# las carpetas desde las que un programa legítimo casi nunca se ejecuta, que son
-# justo donde cae lo que se descarga sin querer.
-SUSPICIOUS_MARKERS = (
-    "\\appdata\\local\\temp\\",
-    "\\appdata\\locallow\\",
-    "\\windows\\temp\\",
-    "\\downloads\\",
-    "\\descargas\\",
-    "\\$recycle.bin\\",
-    "\\temp\\",
-    "\\tmp\\",
-)
+# Puertos conocidos por herramientas de C2/malware — danger directo
+_SUSPICIOUS_PORTS = {4444, 1080, 31337, 6667, 6666, 9001, 9030}
 
-# Rutas de sistema: ahí un puerto poco común deja de ser llamativo.
-TRUSTED_PREFIXES = (
-    "c:\\windows\\",
-    "c:\\program files\\",
-    "c:\\program files (x86)\\",
-)
-
-# Puertos salientes habituales. Salir por uno raro no es malo en sí, pero
-# merece una mirada cuando además el binario está en una ruta inusual.
-COMMON_PORTS = {80, 443, 22, 53, 123, 587, 993, 995, 465, 5223, 8080, 8443, 3478}
-
-# Resolver PTR es lo lento de este módulo; se acota en paralelo y con timeout.
-_RESOLVE_WORKERS = 12
-_RESOLVE_TIMEOUT = 1.5
-_dns_cache: dict[str, str] = {}
+_PRIV_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
 
 
-def _fmt_endpoint(ip: str, port: int) -> str:
-    """IPv6 va entre corchetes; si no, 'a:b:c::443' es ilegible."""
-    return f"[{ip}]:{port}" if ":" in ip else f"{ip}:{port}"
-
-
-def _is_external(ip: str) -> bool:
-    """Descarta loopback, red local, multicast y direcciones reservadas."""
+def _is_private(ip: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip)
+        return addr.is_loopback or addr.is_private or any(addr in net for net in _PRIV_NETS)
     except ValueError:
         return False
-    return not (addr.is_private or addr.is_loopback or addr.is_multicast
-                or addr.is_link_local or addr.is_reserved or addr.is_unspecified)
 
 
 def _resolve(ip: str) -> str:
-    if ip in _dns_cache:
-        return _dns_cache[ip]
-    previo = socket.getdefaulttimeout()
     try:
-        socket.setdefaulttimeout(_RESOLVE_TIMEOUT)
-        host = socket.gethostbyaddr(ip)[0]
-    except (OSError, socket.herror, socket.gaierror):
-        host = ""
-    finally:
-        socket.setdefaulttimeout(previo)
-    _dns_cache[ip] = host
-    return host
+        return socket.gethostbyaddr(ip)[0]
+    except Exception:
+        return ip
 
 
-def _proc_info(pid) -> tuple[str, str]:
+def _proc_name(pid) -> str:
     if not pid:
-        return ("Sistema", "")
+        return "desconocido"
     try:
-        proc = psutil.Process(pid)
-        with proc.oneshot():
-            try:
-                exe = proc.exe() or ""
-            except (psutil.AccessDenied, OSError):
-                exe = ""
-            return (proc.name(), exe)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return (f"PID {pid}", "")
-
-
-def _classify(exe: str, name: str, port: int) -> tuple[str, str]:
-    """Devuelve (estado, motivo) para una conexión."""
-    exe_low = (exe or "").lower()
-
-    if any(marker in exe_low for marker in SUSPICIOUS_MARKERS):
-        return ("danger", "El ejecutable corre desde una carpeta temporal o de descargas y está saliendo a Internet.")
-
-    if looks_random(name):
-        return ("warning", "El nombre del ejecutable parece generado al azar.")
-
-    # Un puerto poco común solo llama la atención si además el binario no es de
-    # sistema: los programas de usuario abren puertos propios continuamente.
-    if (port not in COMMON_PORTS and port > 1024
-            and exe_low and not exe_low.startswith(TRUSTED_PREFIXES)):
-        return ("warning", f"Sale por el puerto {port}, que no es de los habituales.")
-
-    return ("ok", "Conexión normal hacia un servicio de Internet.")
+        return psutil.Process(pid).name()
+    except Exception:
+        return "desconocido"
 
 
 def analyze_connections() -> dict:
     try:
-        conns = psutil.net_connections(kind="tcp")
-    except (psutil.AccessDenied, PermissionError):
+        conns = [
+            c for c in psutil.net_connections(kind="tcp")
+            if c.status == "ESTABLISHED" and c.raddr
+            and not ipaddress.ip_address(c.raddr.ip).is_loopback
+        ]
+    except psutil.AccessDenied:
         return {
-            "status": "warning",
-            "title": "Conexiones salientes",
-            "summary": "Se necesitan permisos de administrador para ver todas las conexiones.",
-            "issue_count": 0,
-            "items": [{
-                "name": "Acceso restringido", "status": "warning",
-                "message": "Windows solo muestra las conexiones de los procesos propios sin elevación.",
-                "value": "Sin acceso",
-                "detail": "Reinicia PC Guardian como administrador para ver el listado completo.",
-            }],
+            "status": "warning", "title": "Conexiones salientes",
+            "summary": "Se necesitan permisos de administrador para ver las conexiones TCP.",
+            "issue_count": 1,
+            "items": [{"name": "Acceso denegado", "status": "warning",
+                        "message": "Ejecuta la app como administrador para ver las conexiones activas.",
+                        "value": "Sin acceso", "detail": ""}],
+        }
+    except Exception as e:
+        return {
+            "status": "warning", "title": "Conexiones salientes",
+            "summary": "No se pudieron obtener las conexiones TCP.",
+            "issue_count": 1,
+            "items": [{"name": "Error", "status": "warning",
+                        "message": str(e)[:120], "value": "Error", "detail": ""}],
         }
 
-    # Una misma IP remota puede tener varias conexiones del mismo proceso;
-    # se agrupan para no llenar la lista de duplicados.
-    grupos: dict[tuple, dict] = {}
+    # Deduplicar por (pid, raddr)
+    seen: set[tuple] = set()
+    unique: list = []
     for c in conns:
-        if c.status != psutil.CONN_ESTABLISHED or not c.raddr:
-            continue
-        ip, port = c.raddr.ip, c.raddr.port
-        if not _is_external(ip):
-            continue
+        key = (c.pid, c.raddr.ip, c.raddr.port)
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
 
-        name, exe = _proc_info(c.pid)
-        key = (c.pid, ip, port)
-        entry = grupos.get(key)
-        if entry:
-            entry["count"] += 1
+    # Limitar y resolver nombres en paralelo (1 s de timeout por lookup)
+    MAX = 40
+    sample = unique[:MAX]
+    ips = {c.raddr.ip for c in sample}
+
+    resolved: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        fut_map = {ex.submit(_resolve, ip): ip for ip in ips}
+        for fut in as_completed(fut_map, timeout=4):
+            ip = fut_map[fut]
+            try:
+                resolved[ip] = fut.result(timeout=0)
+            except Exception:
+                resolved[ip] = ip
+
+    items: list[dict] = []
+    for c in sample:
+        rip   = c.raddr.ip
+        rport = c.raddr.port
+        proc  = _proc_name(c.pid)
+        host  = resolved.get(rip, rip)
+        priv  = _is_private(rip)
+
+        if rport in _SUSPICIOUS_PORTS:
+            st = "danger"
+        elif priv or rport in _SAFE_PORTS:
+            st = "ok"
         else:
-            grupos[key] = {"pid": c.pid, "ip": ip, "port": port,
-                           "name": name, "exe": exe, "count": 1}
+            st = "warning"
 
-    if not grupos:
-        return {
-            "status": "ok",
-            "title": "Conexiones salientes",
-            "summary": "Ningún proceso mantiene una conexión activa hacia Internet en este momento.",
-            "issue_count": 0,
-            "items": [],
-        }
-
-    # Resolución inversa en paralelo: en serie serían segundos por dirección.
-    ips = sorted({g["ip"] for g in grupos.values()})
-    with ThreadPoolExecutor(max_workers=_RESOLVE_WORKERS) as pool:
-        hosts = dict(zip(ips, pool.map(_resolve, ips)))
-
-    items, issues = [], 0
-    for g in sorted(grupos.values(), key=lambda x: (x["name"].lower(), x["ip"])):
-        status, motivo = _classify(g["exe"], g["name"], g["port"])
-        if status != "ok":
-            issues += 1
-
-        host = hosts.get(g["ip"], "")
-        destino = f"{host} ({g['ip']})" if host else g["ip"]
-        repeticiones = f" · {g['count']} conexiones" if g["count"] > 1 else ""
+        label = f"{'LAN' if priv else 'WAN'} · {host if host != rip else rip}"
+        port_label = _port_label(rport)
+        detail = f"{rip} → :{rport}" + (f" ({host})" if host != rip else "")
 
         items.append({
-            "name":    g["name"],
-            "status":  status,
-            "message": f"{motivo} Destino: {destino}.",
-            "value":   _fmt_endpoint(g["ip"], g["port"]) + repeticiones,
-            "detail":  g["exe"] or "Ruta no accesible",
-            "pid":     g["pid"],
-            "host":    host,
+            "name":    proc,
+            "status":  st,
+            "message": label,
+            "value":   port_label,
+            "detail":  detail,
         })
 
-    # Los avisos primero: es lo que interesa mirar.
-    items.sort(key=lambda i: {"danger": 0, "warning": 1, "ok": 2}[i["status"]])
+    # Ordenar: danger → warning → ok; dentro de cada grupo por puerto
+    _priority = {"danger": 0, "warning": 1, "ok": 2}
+    items.sort(key=lambda x: (_priority.get(x["status"], 3), x["value"]))
 
-    total = len(items)
-    if issues:
-        summary = (f"{total} conexión(es) saliente(s) activa(s); {issues} merece(n) una mirada "
-                   f"por la ruta del ejecutable o el puerto usado.")
-        status = "danger" if any(i["status"] == "danger" for i in items) else "warning"
+    danger  = sum(1 for i in items if i["status"] == "danger")
+    warning = sum(1 for i in items if i["status"] == "warning")
+    overall = "danger" if danger else ("warning" if warning else "ok")
+
+    if not items:
+        summary = "Sin conexiones TCP externas activas en este momento."
+        overall = "ok"
+    elif danger:
+        summary = f"{danger} conexión(es) a puertos sospechosos detectadas."
+    elif warning:
+        summary = f"{len(items)} conexiones activas — {warning} a puertos no estándar."
     else:
-        summary = f"{total} conexión(es) saliente(s) activa(s), ninguna desde una ubicación sospechosa."
-        status = "ok"
+        summary = f"{len(items)} conexión(es) TCP activas, todas a puertos conocidos."
 
     return {
-        "status": status,
-        "title": "Conexiones salientes",
-        "summary": summary,
-        "issue_count": issues,
-        "items": items,
+        "status":      overall,
+        "title":       "Conexiones salientes",
+        "summary":     summary,
+        "issue_count": danger + warning,
+        "items":       items,
     }
+
+
+def _port_label(port: int) -> str:
+    labels = {
+        80: "HTTP 80", 443: "HTTPS 443", 853: "DNS-TLS 853",
+        8080: "HTTP 8080", 8443: "HTTPS 8443",
+        21: "FTP 21", 22: "SSH 22", 23: "Telnet 23",
+        25: "SMTP 25", 110: "POP3 110", 143: "IMAP 143",
+        587: "SMTP 587", 993: "IMAPS 993", 995: "POP3S 995",
+        3306: "MySQL 3306", 5432: "PG 5432", 27017: "Mongo 27017",
+        3389: "RDP 3389", 5900: "VNC 5900",
+        4444: "⚠ 4444", 1080: "SOCKS 1080",
+    }
+    return labels.get(port, f":{port}")

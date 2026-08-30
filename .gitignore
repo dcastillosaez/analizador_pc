@@ -29,3 +29,6 @@ Desktop.ini
 
 # Logs
 *.log
+
+# Worktrees temporales de Claude Code
+.claude/worktrees/

@@ -4,19 +4,23 @@ import threading
 import time
 import webbrowser
 
+# Modo silencioso para escaneo al arrancar Windows (sin servidor Flask)
+if "--silent" in sys.argv:
+    from analyzer.notifications import run_silent_scan
+    run_silent_scan()
+    sys.exit(0)
+
 from flask import Flask, jsonify, render_template, request
 
-from analyzer._shell import is_admin, relaunch_as_admin
-
-from analyzer.hardware      import analyze_hardware
-from analyzer.startup       import analyze_startup
-from analyzer.security      import analyze_security
-from analyzer.drivers       import analyze_drivers, update_driver, uninstall_driver
-from analyzer.protection    import analyze_protection
-from analyzer.network       import analyze_network
-from analyzer.maintenance   import analyze_maintenance
-from analyzer.updates       import analyze_updates, update_package
-from analyzer.performance   import snapshot as perf_snapshot
+from analyzer.hardware    import analyze_hardware
+from analyzer.startup     import analyze_startup
+from analyzer.security    import analyze_security
+from analyzer.drivers     import analyze_drivers, update_driver, uninstall_driver
+from analyzer.protection  import analyze_protection
+from analyzer.network     import analyze_network
+from analyzer.maintenance import analyze_maintenance
+from analyzer.updates     import analyze_updates, update_package
+from analyzer.performance import snapshot as perf_snapshot
 from analyzer.energy        import analyze_energy
 from analyzer.connectivity  import analyze_connectivity, run_speedtest
 from analyzer.privacy       import analyze_privacy, clean_temp
@@ -25,11 +29,19 @@ from analyzer.wupdates      import check_windows_updates, apply_windows_update
 from analyzer.wifi          import analyze_wifi
 from analyzer.certs         import analyze_certs, delete_cert
 from analyzer.services      import analyze_services
-from analyzer.processes     import analyze_processes, kill_process
 from analyzer.connections   import analyze_connections
-from analyzer.hardening     import analyze_hardening
-from analyzer.restore       import create_restore_point, restore_status
-from analyzer import history
+from analyzer.processes     import get_top_processes, kill_process
+from analyzer.history       import save_scan as hist_save, list_scans as hist_list, delete_scan as hist_delete
+from analyzer.software      import get_installed_software, uninstall_software
+from analyzer.quickfix      import set_energy_plan_high, disable_startup_item, disable_telemetry
+from analyzer.dns           import analyze_dns, set_dns
+from analyzer.firewall_rules import analyze_firewall_rules, delete_firewall_rule
+from analyzer.perf_history  import record as perf_record, get_history as perf_get_history
+from analyzer.benchmark     import run_benchmark, get_history as bench_get_history
+from analyzer.diskmap       import scan_dir as diskmap_scan
+from analyzer.duplicates    import find_duplicates, delete_files as dup_delete
+from analyzer.notifications import (enable_startup, disable_startup,
+                                    startup_status, send_toast)
 
 if getattr(sys, "frozen", False):
     _BASE = sys._MEIPASS
@@ -43,313 +55,259 @@ app = Flask(
 )
 
 
-# ── Registro de módulos de escaneo ────────────────────────────────────────────
-# Un único endpoint despacha contra esta tabla en lugar de repetir una ruta
-# idéntica por módulo. Los ids son los que usa el frontend en /api/scan/<id>.
-SCANNERS = {
-    "hardware":     analyze_hardware,
-    "startup":      analyze_startup,
-    "security":     analyze_security,
-    "drivers":      analyze_drivers,
-    "protection":   analyze_protection,
-    "network":      analyze_network,
-    "maintenance":  analyze_maintenance,
-    "updates":      analyze_updates,
-    "privacy":      analyze_privacy,
-    "connectivity": analyze_connectivity,
-    "energy":       analyze_energy,
-    "inventory":    analyze_inventory,
-    "certs":        analyze_certs,
-    "wifi":         analyze_wifi,
-    "wupdates":     check_windows_updates,
-    "services":     analyze_services,
-    "processes":    analyze_processes,
-    "connections":  analyze_connections,
-    "hardening":    analyze_hardening,
-}
-
-# Segundos que un resultado sigue considerándose válido. Evita relanzar consultas
-# caras a WMI o al registro al navegar entre vistas. Las acciones explícitas del
-# usuario ("Escanear Sistema", "Analizar módulo") piden ?fresh=1 y lo saltan.
-CACHE_TTL = 60
-
-_cache: dict[str, tuple[float, dict]] = {}
-_cache_lock = threading.Lock()
-_module_locks: dict[str, threading.Lock] = {}
-
-
-def _module_lock(module_id: str) -> threading.Lock:
-    with _cache_lock:
-        return _module_locks.setdefault(module_id, threading.Lock())
-
-
-def run_scanner(module_id: str, fresh: bool = False) -> dict:
-    """Ejecuta un módulo reutilizando el resultado reciente si procede.
-
-    El lock por módulo evita que dos peticiones simultáneas (escaneo global en
-    paralelo, dos pestañas abiertas) disparen la misma consulta cara dos veces.
-    """
-    now = time.monotonic()
-    if not fresh:
-        entry = _cache.get(module_id)
-        if entry and now - entry[0] < CACHE_TTL:
-            return entry[1]
-
-    with _module_lock(module_id):
-        # Otra petición pudo resolverlo mientras esperábamos el lock.
-        entry = _cache.get(module_id)
-        if entry and time.monotonic() - entry[0] < CACHE_TTL and not fresh:
-            return entry[1]
-
-        data = SCANNERS[module_id]()
-        _cache[module_id] = (time.monotonic(), data)
-        return data
-
-
-def invalidate_cache(*module_ids: str) -> None:
-    """Descarta resultados cacheados tras una operación de escritura."""
-    for mid in module_ids or tuple(_cache):
-        _cache.pop(mid, None)
-
-
-# ── Errores ───────────────────────────────────────────────────────────────────
-@app.errorhandler(Exception)
-def handle_any_error(exc):
-    """Cualquier excepción no capturada sale como el esquema JSON estándar.
-
-    Sin esto un fallo en un analyzer devuelve una página HTML de error 500 y el
-    frontend rompe al parsear el JSON, mostrando "Unexpected token '<'".
-    """
-    code = getattr(exc, "code", 500)
-    if not isinstance(code, int):
-        code = 500
-
-    if request.path.startswith("/api/"):
-        if code >= 500:  # los 404/405 no son fallos que merezcan traza
-            app.logger.exception("Fallo en %s", request.path)
-        return jsonify({
-            "status": "danger",
-            "title": "Error interno",
-            "summary": f"El módulo falló: {exc}",
-            "issue_count": 1,
-            "items": [{
-                "name": request.path,
-                "status": "danger",
-                "message": "El análisis no pudo completarse por un error interno.",
-                "value": type(exc).__name__,
-                "detail": str(exc)[:400],
-            }],
-            "success": False,
-            "message": str(exc)[:400],
-        }), code
-
-    return f"<h1>Error {code}</h1><p>{exc}</p>", code
-
-
-# ── Estado de la aplicación ───────────────────────────────────────────────────
-@app.route("/api/status/admin")
-def status_admin():
-    """Indica si la app corre elevada; el frontend avisa cuando no lo está."""
-    return jsonify({"admin": is_admin()})
-
-
-@app.route("/api/admin/elevate", methods=["POST"])
-def admin_elevate():
-    """Relanza la app pidiendo elevación por UAC y cierra la instancia actual."""
-    if is_admin():
-        return jsonify({"success": False, "message": "La aplicación ya se ejecuta como administrador."})
-
-    if not relaunch_as_admin():
-        return jsonify({"success": False, "message": "Windows rechazó la solicitud de elevación."})
-
-    # Se da margen a que la respuesta llegue al navegador antes de salir.
-    def _quit():
-        time.sleep(1.0)
-        os._exit(0)
-
-    threading.Thread(target=_quit, daemon=True).start()
-    return jsonify({"success": True, "message": "Reiniciando con permisos de administrador."})
-
-
-# ── Vistas ────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     bust = str(int(os.path.getmtime(os.path.join(_BASE, "static", "js", "app.js"))))
     return render_template("index.html", cache_bust=bust)
 
 
-# ── Escaneo ───────────────────────────────────────────────────────────────────
-@app.route("/api/scan/<module_id>")
-def scan(module_id):
-    if module_id not in SCANNERS:
-        return jsonify({
-            "status": "danger",
-            "title": "Módulo desconocido",
-            "summary": f"No existe ningún módulo llamado '{module_id}'.",
-            "issue_count": 1,
-            "items": [],
-        }), 404
+@app.route("/api/scan/hardware")
+def scan_hardware():
+    return jsonify(analyze_hardware())
 
-    fresh = request.args.get("fresh") == "1"
-    return jsonify(run_scanner(module_id, fresh=fresh))
+@app.route("/api/scan/startup")
+def scan_startup():
+    return jsonify(analyze_startup())
 
+@app.route("/api/scan/security")
+def scan_security():
+    return jsonify(analyze_security())
 
-@app.route("/api/perf/snapshot")
-def perf_snapshot_route():
-    return jsonify(perf_snapshot())
+@app.route("/api/scan/drivers")
+def scan_drivers():
+    return jsonify(analyze_drivers())
 
+@app.route("/api/driver/update", methods=["POST"])
+def do_driver_update():
+    body = request.get_json(silent=True) or {}
+    device_id = body.get("device_id", "")
+    return jsonify(update_driver(device_id))
+
+@app.route("/api/driver/uninstall", methods=["POST"])
+def do_driver_uninstall():
+    body = request.get_json(silent=True) or {}
+    device_id = body.get("device_id", "")
+    return jsonify(uninstall_driver(device_id))
+
+@app.route("/api/scan/protection")
+def scan_protection():
+    return jsonify(analyze_protection())
+
+@app.route("/api/scan/network")
+def scan_network():
+    return jsonify(analyze_network())
+
+@app.route("/api/scan/maintenance")
+def scan_maintenance():
+    return jsonify(analyze_maintenance())
+
+@app.route("/api/scan/updates")
+def scan_updates():
+    return jsonify(analyze_updates())
+
+@app.route("/api/scan/privacy")
+def scan_privacy():
+    return jsonify(analyze_privacy())
+
+@app.route("/api/privacy/clean-temp", methods=["POST"])
+def privacy_clean_temp():
+    return jsonify(clean_temp())
+
+@app.route("/api/scan/connectivity")
+def scan_connectivity():
+    return jsonify(analyze_connectivity())
 
 @app.route("/api/connectivity/speedtest")
 def connectivity_speedtest():
     return jsonify(run_speedtest())
 
+@app.route("/api/scan/energy")
+def scan_energy():
+    return jsonify(analyze_energy())
 
-# ── Operaciones de escritura ──────────────────────────────────────────────────
-def _con_punto_de_restauracion(descripcion: str):
-    """Crea un punto de restauración si el cliente lo pidió, sin bloquear nada.
+@app.route("/api/perf/snapshot")
+def perf_snapshot_route():
+    return jsonify(perf_snapshot())
 
-    Desinstalar un controlador o instalar una actualización son cambios que
-    cuesta deshacer. Si la protección del sistema está apagada o falta
-    elevación, se sigue adelante y se informa en la respuesta.
-    """
-    body = request.get_json(silent=True) or {}
-    if not body.get("restore_point"):
-        return None
-    return create_restore_point(descripcion)
+@app.route("/api/scan/inventory")
+def scan_inventory():
+    return jsonify(analyze_inventory())
 
-
-@app.route("/api/restore/status")
-def restore_status_route():
-    return jsonify(restore_status())
-
-
-@app.route("/api/restore/create", methods=["POST"])
-def restore_create_route():
-    body = request.get_json(silent=True) or {}
-    return jsonify(create_restore_point(body.get("description") or "PC Guardian - punto manual"))
-
-
-
-@app.route("/api/driver/update", methods=["POST"])
-def do_driver_update():
-    body = request.get_json(silent=True) or {}
-    result = update_driver(body.get("device_id", ""))
-    invalidate_cache("drivers")
-    return jsonify(result)
-
-
-@app.route("/api/driver/uninstall", methods=["POST"])
-def do_driver_uninstall():
-    body = request.get_json(silent=True) or {}
-    restore = _con_punto_de_restauracion("PC Guardian - antes de desinstalar un controlador")
-    result = uninstall_driver(body.get("device_id", ""))
-    result["restore"] = restore
-    invalidate_cache("drivers")
-    return jsonify(result)
-
+@app.route("/api/scan/certs")
+def scan_certs():
+    return jsonify(analyze_certs())
 
 @app.route("/api/cert/delete", methods=["POST"])
 def do_cert_delete():
     body = request.get_json(silent=True) or {}
-    restore = _con_punto_de_restauracion("PC Guardian - antes de eliminar un certificado")
-    result = delete_cert(body.get("store_path", ""), body.get("thumbprint", ""))
-    result["restore"] = restore
-    invalidate_cache("certs")
-    return jsonify(result)
+    return jsonify(delete_cert(body.get("store_path",""), body.get("thumbprint","")))
 
+@app.route("/api/scan/wifi")
+def scan_wifi():
+    return jsonify(analyze_wifi())
 
-@app.route("/api/privacy/clean-temp", methods=["POST"])
-def privacy_clean_temp():
-    result = clean_temp()
-    invalidate_cache("privacy", "hardware")
-    return jsonify(result)
-
+@app.route("/api/scan/wupdates")
+def scan_wupdates():
+    return jsonify(check_windows_updates())
 
 @app.route("/api/wupdate/apply/<path:update_id>", methods=["POST"])
 def do_windows_update(update_id):
-    restore = _con_punto_de_restauracion("PC Guardian - antes de instalar una actualizacion")
-    result = apply_windows_update(update_id)
-    result["restore"] = restore
-    invalidate_cache("wupdates")
-    return jsonify(result)
+    return jsonify(apply_windows_update(update_id))
 
+@app.route("/api/scan/services")
+def scan_services():
+    return jsonify(analyze_services())
 
-@app.route("/api/process/kill", methods=["POST"])
-def do_kill_process():
-    body = request.get_json(silent=True) or {}
-    result = kill_process(body.get("pid"))
-    invalidate_cache("processes", "connections", "hardware")
-    return jsonify(result)
+@app.route("/api/scan/connections")
+def scan_connections():
+    return jsonify(analyze_connections())
+
+@app.route("/api/scan/processes")
+def scan_processes():
+    return jsonify(get_top_processes())
+
+@app.route("/api/processes/<int:pid>/kill", methods=["POST"])
+def do_kill_process(pid):
+    return jsonify(kill_process(pid))
+
+@app.route("/api/history/save", methods=["POST"])
+def history_save():
+    body  = request.get_json(force=True, silent=True) or {}
+    score = int(body.get("score", 0))
+    sid   = hist_save(score, body.get("results", {}))
+    return jsonify({"ok": True, "id": sid})
+
+@app.route("/api/history")
+def history_get():
+    return jsonify(hist_list())
+
+@app.route("/api/history/<int:scan_id>", methods=["DELETE"])
+def history_del(scan_id):
+    hist_delete(scan_id)
+    return jsonify({"ok": True})
+
+@app.route("/api/scan/software")
+def scan_software():
+    return jsonify(get_installed_software())
+
+@app.route("/api/software/uninstall", methods=["POST"])
+def do_uninstall():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(uninstall_software(body.get("name", "")))
+
+@app.route("/api/quickfix/energy-high", methods=["POST"])
+def qf_energy():
+    return jsonify(set_energy_plan_high())
+
+@app.route("/api/quickfix/disable-startup", methods=["POST"])
+def qf_disable_startup():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(disable_startup_item(
+        body.get("hive", ""),
+        body.get("key", ""),
+        body.get("name", ""),
+    ))
+
+@app.route("/api/quickfix/telemetry-off", methods=["POST"])
+def qf_telemetry():
+    return jsonify(disable_telemetry())
+
+@app.route("/api/scan/dns")
+def scan_dns():
+    return jsonify(analyze_dns())
+
+@app.route("/api/dns/set", methods=["POST"])
+def dns_set():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(set_dns(body.get("interface", ""), body.get("dns1", ""), body.get("dns2", "")))
+
+@app.route("/api/scan/firewall-rules")
+def scan_firewall_rules():
+    return jsonify(analyze_firewall_rules())
+
+@app.route("/api/firewall-rules/delete", methods=["POST"])
+def do_delete_fw_rule():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(delete_firewall_rule(body.get("name", "")))
+
+@app.route("/api/perf/history")
+def perf_history_get():
+    return jsonify(perf_get_history())
+
+@app.route("/api/benchmark/run", methods=["POST"])
+def benchmark_run():
+    return jsonify(run_benchmark())
+
+@app.route("/api/benchmark/history")
+def benchmark_history():
+    return jsonify(bench_get_history())
+
+@app.route("/api/diskmap/scan", methods=["POST"])
+def do_diskmap():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(diskmap_scan(body.get("path", "")))
+
+@app.route("/api/duplicates/scan", methods=["POST"])
+def do_dup_scan():
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(find_duplicates(body.get("path", "")))
+
+@app.route("/api/duplicates/delete", methods=["POST"])
+def do_dup_delete():
+    body  = request.get_json(force=True, silent=True) or {}
+    paths = body.get("paths", [])
+    if not isinstance(paths, list):
+        return jsonify({"ok": False, "msg": "Se esperaba una lista de rutas."})
+    return jsonify(dup_delete(paths))
+
+@app.route("/api/notifications/status")
+def notif_status():
+    return jsonify({"enabled": startup_status()})
+
+@app.route("/api/notifications/enable", methods=["POST"])
+def notif_enable():
+    return jsonify(enable_startup())
+
+@app.route("/api/notifications/disable", methods=["POST"])
+def notif_disable():
+    return jsonify(disable_startup())
+
+@app.route("/api/notifications/test", methods=["POST"])
+def notif_test():
+    send_toast("PC Guardian — Prueba", "Las notificaciones están funcionando correctamente.")
+    return jsonify({"ok": True, "msg": "Notificación de prueba enviada."})
 
 
 @app.route("/api/update/<path:package_id>", methods=["POST"])
 def do_update(package_id):
-    result = update_package(package_id)
-    invalidate_cache("updates")
-    return jsonify(result)
-
-
-# ── Historial de escaneos ─────────────────────────────────────────────────────
-@app.route("/api/history", methods=["GET"])
-def history_list():
-    return jsonify({"scans": history.list_scans(limit=int(request.args.get("limit", 50)))})
-
-
-@app.route("/api/history", methods=["POST"])
-def history_save():
-    body = request.get_json(silent=True) or {}
-    return jsonify(history.save_scan(body.get("results") or {}, body.get("score")))
-
-
-@app.route("/api/history/<int:scan_id>", methods=["GET"])
-def history_get(scan_id):
-    scan = history.get_scan(scan_id)
-    if scan is None:
-        return jsonify({"success": False, "message": "Ese escaneo ya no existe."}), 404
-    return jsonify(scan)
-
-
-@app.route("/api/history/<int:scan_id>", methods=["DELETE"])
-def history_delete(scan_id):
-    return jsonify(history.delete_scan(scan_id))
-
-
-@app.route("/api/history/clear", methods=["POST"])
-def history_clear():
-    return jsonify(history.clear_history())
-
-
-@app.route("/api/history/diff")
-def history_diff():
-    try:
-        a, b = int(request.args["a"]), int(request.args["b"])
-    except (KeyError, ValueError):
-        return jsonify({"success": False, "message": "Faltan los parámetros a y b."}), 400
-    return jsonify(history.diff_scans(a, b))
-
-
-# ── Arranque ──────────────────────────────────────────────────────────────────
-PORT = 47832
-HOST = "127.0.0.1"
+    return jsonify(update_package(package_id))
 
 
 def _open_browser():
     time.sleep(1.4)
-    webbrowser.open(f"http://{HOST}:{PORT}")
+    webbrowser.open("http://127.0.0.1:8765")
 
 
-def _serve():
-    """Sirve la app. Prefiere waitress; cae al servidor de Flask si no está."""
-    try:
-        from waitress import serve
-    except ImportError:
-        app.run(host=HOST, port=PORT, debug=False, use_reloader=False, threaded=True)
-        return
-    # threads=8: el escaneo lanza varios módulos en paralelo desde el navegador.
-    serve(app, host=HOST, port=PORT, threads=8, channel_timeout=900, ident="PC Guardian")
+def _perf_recorder():
+    while True:
+        time.sleep(300)  # cada 5 minutos
+        try:
+            snap = perf_snapshot()
+            gpu_pct = None
+            if snap.get("gpu"):
+                gpu_pct = snap["gpu"].get("percent")
+            perf_record(
+                snap["cpu"]["percent"],
+                snap["ram"]["percent"],
+                snap["disk"]["percent"],
+                gpu_pct,
+            )
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
     if sys.platform == "win32":
-        threading.Thread(target=_open_browser, daemon=True).start()
-    _serve()
+        threading.Thread(target=_open_browser,  daemon=True).start()
+        threading.Thread(target=_perf_recorder, daemon=True).start()
+    app.run(debug=False, port=8765, use_reloader=False)
