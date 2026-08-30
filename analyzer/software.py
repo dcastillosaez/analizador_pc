@@ -1,6 +1,6 @@
 """Inventario de software instalado vía registro de Windows."""
 import re
-import subprocess
+from ._shell import run
 import winreg
 
 _HIVES = [
@@ -82,23 +82,16 @@ def uninstall_software(name: str) -> dict:
     if not name or len(name) > 200 or re.search(r'[;&|`$<>]', name):
         return {"ok": False, "msg": "Nombre de programa no válido."}
     try:
-        r = subprocess.run(
-            ["winget", "uninstall", "--name", name,
-             "--silent", "--accept-source-agreements"],
-            capture_output=True, timeout=120,
-        )
+        r = run(["winget", "uninstall", "--name", name,
+                 "--silent", "--accept-source-agreements"], timeout=120)
+        if r.not_found:
+            return {"ok": False, "msg": "winget no disponible en este equipo."}
+        if r.timed_out:
+            return {"ok": False, "msg": "Tiempo de espera agotado (120 s)."}
         if r.returncode == 0:
             return {"ok": True, "msg": f'"{name}" desinstalado correctamente.'}
-        for enc in ("utf-8", "oem", "cp1252"):
-            try:
-                err = (r.stderr or r.stdout).decode(enc, errors="ignore").strip()
-                break
-            except Exception:
-                err = ""
+        # La decodificación ya la resolvió _shell.
+        err = r.combined
         return {"ok": False, "msg": f"winget (código {r.returncode}): {err[:180]}"}
-    except FileNotFoundError:
-        return {"ok": False, "msg": "winget no disponible en este equipo."}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "msg": "Tiempo de espera agotado (120 s)."}
     except Exception as e:
         return {"ok": False, "msg": str(e)[:120]}

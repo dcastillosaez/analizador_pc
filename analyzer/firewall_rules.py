@@ -1,20 +1,16 @@
 """Reglas de firewall no estándar — PowerShell Get-NetFirewallRule."""
 import json
-import subprocess
+from ._shell import run_ps
 
 
-def _run_ps(cmd: str, timeout: int = 25) -> str:
-    r = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-        capture_output=True, text=True, timeout=timeout,
-        encoding="utf-8", errors="ignore",
-    )
-    return (r.stdout or "").strip()
+def _run_ps(cmd: str, timeout: int = 25):
+    """Devuelve el resultado completo: run_ps no lanza, marca el timeout dentro."""
+    return run_ps(cmd, timeout=timeout)
 
 
 def analyze_firewall_rules() -> dict:
     try:
-        raw = _run_ps(
+        res = _run_ps(
             "Get-NetFirewallRule -Enabled True | "
             "Where-Object { $_.Group -notlike '@*' -and "
             "                $_.Group -notlike 'Windows*' -and "
@@ -23,12 +19,13 @@ def analyze_firewall_rules() -> dict:
             "Select-Object DisplayName, Action, Direction, Profile | "
             "ConvertTo-Json -Compress -Depth 2"
         )
-    except subprocess.TimeoutExpired:
-        return {
-            "status": "warning", "title": "Reglas de firewall",
-            "summary": "Tiempo de espera agotado al obtener las reglas.",
-            "issue_count": 1, "items": [],
-        }
+        if res.timed_out:
+            return {
+                "status": "warning", "title": "Reglas de firewall",
+                "summary": "Tiempo de espera agotado al obtener las reglas.",
+                "issue_count": 1, "items": [],
+            }
+        raw = res.stdout.strip()
     except Exception as e:
         return {
             "status": "warning", "title": "Reglas de firewall",
@@ -95,12 +92,7 @@ def delete_firewall_rule(name: str) -> dict:
     if not name or len(name) > 300:
         return {"ok": False, "msg": "Nombre de regla no válido."}
     try:
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-             f"Remove-NetFirewallRule -DisplayName {json.dumps(name)}"],
-            capture_output=True, text=True, timeout=15,
-            encoding="utf-8", errors="ignore",
-        )
+        r = run_ps(f"Remove-NetFirewallRule -DisplayName {json.dumps(name)}", timeout=15)
         if r.returncode == 0:
             return {"ok": True, "msg": f"Regla '{name}' eliminada."}
         err = (r.stderr or r.stdout or "")[:150].strip()

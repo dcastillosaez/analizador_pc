@@ -1,5 +1,5 @@
 """Acciones rápidas de optimización del sistema."""
-import subprocess
+from ._shell import run
 import winreg
 
 _HP_GUID = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
@@ -7,20 +7,14 @@ _HP_GUID = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 
 def set_energy_plan_high() -> dict:
     try:
-        r = subprocess.run(
-            ["powercfg", "/setactive", _HP_GUID],
-            capture_output=True, timeout=10,
-        )
+        r = run(["powercfg", "/setactive", _HP_GUID], timeout=10)
         if r.returncode == 0:
             return {"ok": True, "msg": "Plan de energía cambiado a Alto Rendimiento."}
         # Alias por si el GUID no existe en este equipo
-        r2 = subprocess.run(
-            ["powercfg", "/setactive", "SCHEME_MIN"],
-            capture_output=True, timeout=10,
-        )
+        r2 = run(["powercfg", "/setactive", "SCHEME_MIN"], timeout=10)
         if r2.returncode == 0:
             return {"ok": True, "msg": "Plan de energía cambiado a Alto Rendimiento."}
-        err = (r.stderr or r.stdout).decode("oem", errors="ignore")[:100]
+        err = r.combined[:100]
         return {"ok": False, "msg": f"Error al cambiar plan: {err}"}
     except Exception as e:
         return {"ok": False, "msg": str(e)[:120]}

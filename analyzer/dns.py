@@ -1,8 +1,9 @@
 """DNS activo — servidores por interfaz, DoH, opción de cambiar."""
 import json
 import re
-import subprocess
 import winreg
+
+from ._shell import run, run_ps_json
 
 _KNOWN = {
     "8.8.8.8":           "Google DNS",
@@ -22,21 +23,13 @@ _IP_RE = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
 
 def _get_interfaces() -> list:
     try:
-        r = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-             "Get-DnsClientServerAddress -AddressFamily IPv4 | "
-             "Where-Object {$_.ServerAddresses} | "
-             "Select-Object InterfaceAlias, ServerAddresses | "
-             "ConvertTo-Json -Compress -Depth 2"],
-            capture_output=True, text=True, timeout=15,
-            encoding="utf-8", errors="ignore",
-        )
-        raw = (r.stdout or "").strip()
-        if not raw:
-            return []
-        data = json.loads(raw)
-        if isinstance(data, dict):
-            data = [data]
+        data = run_ps_json(
+            "Get-DnsClientServerAddress -AddressFamily IPv4 | "
+            "Where-Object {$_.ServerAddresses} | "
+            "Select-Object InterfaceAlias, ServerAddresses | "
+            "ConvertTo-Json -Compress -Depth 2",
+            timeout=15, default=[],
+        ) or []
         result = []
         for entry in data:
             iface = entry.get("InterfaceAlias", "")
@@ -137,22 +130,18 @@ def set_dns(interface: str, dns1: str, dns2: str = "") -> dict:
         return {"ok": False, "msg": "Dirección DNS primaria no válida."}
     if dns2 and not _IP_RE.match(dns2):
         return {"ok": False, "msg": "Dirección DNS secundaria no válida."}
-    try:
-        r = subprocess.run(
-            ["netsh", "interface", "ip", "set", "dns",
-             f"name={interface}", "static", dns1, "primary"],
-            capture_output=True, timeout=10,
-        )
-        if r.returncode != 0:
-            err = (r.stderr or r.stdout).decode("oem", errors="ignore")[:120]
-            return {"ok": False, "msg": f"netsh falló: {err}"}
-        if dns2:
-            subprocess.run(
-                ["netsh", "interface", "ip", "add", "dns",
-                 f"name={interface}", dns2, "index=2"],
-                capture_output=True, timeout=10,
-            )
-        label = _KNOWN.get(dns1, dns1)
-        return {"ok": True, "msg": f"DNS de '{interface}' cambiado a {label} ({dns1})."}
-    except Exception as e:
-        return {"ok": False, "msg": str(e)[:120]}
+    r = run(["netsh", "interface", "ip", "set", "dns",
+             f"name={interface}", "static", dns1, "primary"], timeout=10)
+    if r.error:
+        return {"ok": False, "msg": r.error[:120]}
+    if r.returncode != 0:
+        if r.needs_admin:
+            return {"ok": False, "msg": "Cambiar el DNS necesita permisos de administrador."}
+        return {"ok": False, "msg": f"netsh falló: {r.combined[:120]}"}
+
+    if dns2:
+        run(["netsh", "interface", "ip", "add", "dns",
+             f"name={interface}", dns2, "index=2"], timeout=10)
+
+    label = _KNOWN.get(dns1, dns1)
+    return {"ok": True, "msg": f"DNS de '{interface}' cambiado a {label} ({dns1})."}
