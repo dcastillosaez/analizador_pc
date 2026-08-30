@@ -447,3 +447,25 @@ class TestPuntosDeRestauracion:
         from analyzer import _shell
         monkeypatch.setattr(restore, "run_ps", lambda *a, **k: _shell.ShellResult(returncode=0, stdout="OK"))
         assert restore.create_restore_point("prueba")["success"] is True
+
+
+class TestResolucionDeConexiones:
+    """La resolución inversa es un adorno: no puede tumbar el módulo."""
+
+    def test_una_ip_que_no_resuelve_se_devuelve_tal_cual(self):
+        # 192.0.2.1 pertenece a la red reservada para documentación (RFC 5737).
+        assert connections._resolve("192.0.2.1") == "192.0.2.1"
+
+    def test_el_timeout_de_socket_se_restaura(self):
+        import socket
+        previo = socket.getdefaulttimeout()
+        connections._resolve("192.0.2.1")
+        assert socket.getdefaulttimeout() == previo
+
+    def test_el_modulo_sobrevive_a_una_resolucion_lenta(self, monkeypatch):
+        import time
+        monkeypatch.setattr(connections, "_resolve",
+                            lambda ip: (time.sleep(6), ip)[1])
+        datos = connections.analyze_connections()
+        assert datos["title"] == "Conexiones salientes"
+        assert datos["status"] in ("ok", "warning", "danger")

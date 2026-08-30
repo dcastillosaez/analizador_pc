@@ -29,11 +29,20 @@ def _is_private(ip: str) -> bool:
         return False
 
 
+# gethostbyaddr no acepta timeout propio: sin este límite un PTR que no responde
+# deja el hilo colgado 10-30 s y el pool no cierra hasta que termine.
+_RESOLVE_TIMEOUT = 1.5
+
+
 def _resolve(ip: str) -> str:
+    previo = socket.getdefaulttimeout()
     try:
+        socket.setdefaulttimeout(_RESOLVE_TIMEOUT)
         return socket.gethostbyaddr(ip)[0]
     except Exception:
         return ip
+    finally:
+        socket.setdefaulttimeout(previo)
 
 
 def _proc_name(pid) -> str:
@@ -84,15 +93,21 @@ def analyze_connections() -> dict:
     sample = unique[:MAX]
     ips = {c.raddr.ip for c in sample}
 
-    resolved: dict[str, str] = {}
+    # Las IPs que no resuelvan a tiempo se quedan como IP: la resolución inversa
+    # es un adorno, no puede tumbar el módulo. Antes, as_completed lanzaba
+    # TimeoutError fuera del try de arriba y el escaneo entero fallaba con
+    # "N (of M) futures unfinished" en cuanto una consulta PTR se demoraba.
+    resolved: dict[str, str] = {ip: ip for ip in ips}
     with ThreadPoolExecutor(max_workers=12) as ex:
         fut_map = {ex.submit(_resolve, ip): ip for ip in ips}
-        for fut in as_completed(fut_map, timeout=4):
-            ip = fut_map[fut]
-            try:
-                resolved[ip] = fut.result(timeout=0)
-            except Exception:
-                resolved[ip] = ip
+        try:
+            for fut in as_completed(fut_map, timeout=4):
+                try:
+                    resolved[fut_map[fut]] = fut.result(timeout=0)
+                except Exception:
+                    pass
+        except FuturesTimeout:
+            pass          # nos quedamos con lo que haya resuelto
 
     items: list[dict] = []
     for c in sample:
