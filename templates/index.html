@@ -160,6 +160,17 @@
           <span class="nav-item-label">Firewall</span>
         </div>
 
+        <div class="nav-item" id="nav-item-hardening" onclick="navigateTo('hardening')" tabindex="0" title="Protecciones del sistema" role="button" aria-label="Protecciones del sistema">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="10" width="16" height="11" rx="2"/>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Protecciones</span>
+          <span class="nav-dot dot-pending" id="nav-dot-hardening"></span>
+        </div>
+
         <!-- Grupo: Red -->
         <div class="nav-group-label">Red</div>
 
@@ -468,6 +479,18 @@
         </div>
       </header>
 
+      <!-- Aviso de privilegios: varios checks devuelven datos parciales sin elevar -->
+      <div id="admin-banner" class="admin-banner hidden" role="status">
+        <span class="admin-banner-icon" aria-hidden="true">🛡️</span>
+        <div class="admin-banner-text">
+          <strong>PC Guardian no se está ejecutando como administrador.</strong>
+          <span>Puertos del sistema, antivirus, controladores, BitLocker y puntos de
+                restauración mostrarán información incompleta.</span>
+        </div>
+        <button class="admin-banner-btn" onclick="elevateApp()">Reiniciar como administrador</button>
+        <button class="admin-banner-close" onclick="dismissAdminBanner()" aria-label="Ocultar aviso">×</button>
+      </div>
+
       <!-- Sección de progreso (dentro de main-wrap, encima del content-area) -->
       <div id="progress-section" class="progress-section hidden">
         <div class="progress-card">
@@ -540,6 +563,10 @@
               <div class="pstep" id="pstep-dns">
                 <div class="pstep-dot"></div><span>DNS</span>
                 <span class="pstep-time" id="ptime-dns"></span>
+              </div>
+              <div class="pstep" id="pstep-hardening">
+                <div class="pstep-dot"></div><span>Protecciones</span>
+                <span class="pstep-time" id="ptime-hardening"></span>
               </div>
             </div>
 
@@ -676,6 +703,26 @@
       </div>
       <div class="card-body" id="body-protection">
         <div class="empty-state"><span class="empty-emoji">🛡️</span><p>Pendiente de análisis</p></div>
+      </div>
+    </div>
+
+    <!-- Protecciones de plataforma -->
+    <div class="card" id="card-hardening">
+      <div class="card-header">
+        <div class="card-icon-wrap c-protection">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="10" width="16" height="11" rx="2"/>
+            <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Protecciones del sistema</h2>
+          <p>BitLocker, arranque seguro, TPM, ransomware, UAC y SmartScreen</p>
+        </div>
+        <div class="card-badge" id="badge-hardening"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-hardening">
+        <div class="empty-state"><span class="empty-emoji">🔐</span><p>Pendiente de análisis</p></div>
       </div>
     </div>
 

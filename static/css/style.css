@@ -2369,3 +2369,48 @@ body {
   font-family: monospace; font-size: 0.72rem;
 }
 [data-theme="light"] .notif-detail-item code { background: rgba(0,0,0,0.06); }
+
+/* ─── Aviso de privilegios ────────────────────────────────────────────────── */
+.admin-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 16px 24px 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(255,165,2,.28);
+  border-left: 3px solid var(--warning);
+  border-radius: 10px;
+  background: rgba(255,165,2,.07);
+  font-size: 13px;
+}
+.admin-banner.hidden { display: none; }
+.admin-banner-icon { font-size: 18px; line-height: 1; }
+.admin-banner-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.admin-banner-text strong { color: var(--warning); font-weight: 600; }
+.admin-banner-text span { color: var(--text-soft); font-size: 12px; }
+.admin-banner-btn {
+  flex-shrink: 0;
+  padding: 7px 14px;
+  border: 1px solid var(--warning);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--warning);
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--tr), color var(--tr);
+}
+.admin-banner-btn:hover { background: var(--warning); color: #0d1224; }
+.admin-banner-close {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+.admin-banner-close:hover { background: rgba(255,255,255,.06); color: var(--text); }
+
+@media (max-width: 720px) {
+  .admin-banner { flex-wrap: wrap; margin: 12px 16px 0; }
+  .admin-banner-btn { width: 100%; }
+}

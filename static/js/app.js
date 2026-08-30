@@ -45,10 +45,11 @@ const MODULE_META = {
   diskmap:          { label: 'Mapa de disco',group: 'Herramientas',emoji: '💾', color: '#6c5ce7' },
   duplicates:       { label: 'Duplicados',   group: 'Herramientas',emoji: '📋', color: '#00cec9' },
   notifications:    { label: 'Notificaciones',group:'Herramientas',emoji: '🔔', color: '#e17055' },
+  hardening:        { label: 'Protecciones',  group: 'Seguridad',  emoji: '🔐', color: '#fd79a8' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
-const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services'];
+const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','hardening'];
 
 // Estado de navegación
 let activeView = 'overview';
@@ -266,7 +267,7 @@ function _returnCardsToPool() {
   if (!area || !pool) return;
 
   // Mover de vuelta al pool los cards que estén en content-area
-  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark']);
+  const ids = Object.keys(MODULE_META).concat(['perf', 'inventory', 'wupdates', 'services', 'connections', 'processes', 'software', 'dns', 'firewall-rules', 'benchmark', 'hardening']);
   ids.forEach(id => {
     const card = _id(`card-${id}`);
     if (card && area.contains(card)) {
@@ -363,6 +364,7 @@ const MODULES = [
   { id: 'services',     label: 'Inspeccionando servicios de Windows…',       step: 'pstep-services'     },
   { id: 'processes',   label: 'Analizando procesos activos…',               step: 'pstep-processes'    },
   { id: 'dns',         label: 'Comprobando configuración DNS…',             step: 'pstep-dns'          },
+  { id: 'hardening',   label: 'Comprobando protecciones de Windows…',       step: 'pstep-hardening'    },
 ];
 
 let scanResults = {};
@@ -388,6 +390,23 @@ const MODULE_CMDS = {
 };
 
 /* ── Punto de entrada ────────────────────────────────────────────────────── */
+// Modulos simultaneos durante el escaneo global. Varios se pasan segundos
+// esperando a WMI, winget o la red; en serie el escaneo completo se va a
+// minutos. Con 4 en vuelo el cuello de botella pasa a ser el modulo mas lento.
+const SCAN_CONCURRENCY = 4;
+
+/** Ejecuta `worker` sobre cada elemento con como mucho `limit` en vuelo. */
+async function runPool(items, limit, worker) {
+  let siguiente = 0;
+  const carriles = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (siguiente < items.length) {
+      const i = siguiente++;
+      await worker(items[i], i);
+    }
+  });
+  await Promise.all(carriles);
+}
+
 async function startScan() {
   if (scanning) return;
   scanning = true;
@@ -400,9 +419,11 @@ async function startScan() {
 
   termLog('info', '=== PC Guardian — análisis iniciado ===');
 
-  for (let i = 0; i < MODULES.length; i++) {
-    const mod = MODULES[i];
-    setProgress(mod.label, Math.round((i / MODULES.length) * 100));
+  let hechos = 0;
+  const total = MODULES.length;
+
+  await runPool(MODULES, SCAN_CONCURRENCY, async (mod) => {
+    setProgress(mod.label, Math.round((hechos / total) * 100));
     setStepState(mod.step, 'active');
 
     const t0 = performance.now();
@@ -425,8 +446,9 @@ async function startScan() {
       termLog('error', `✗ Error en ${mod.id} (${elapsed}s): ${err.message}`);
     }
 
-    setProgress(null, Math.round(((i + 1) / MODULES.length) * 100));
-  }
+    hechos++;
+    setProgress(null, Math.round((hechos / total) * 100));
+  });
 
   termLog('info', '=== Análisis completado ===');
   setScanningUI(false);
@@ -453,8 +475,12 @@ async function _autoSaveHistory() {
 /* ── Fetch ───────────────────────────────────────────────────────────────── */
 async function fetchModule(id) {
   const res = await fetch(`/api/scan/${id}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  // El servidor devuelve el error en el mismo esquema JSON: mostrar su mensaje
+  // es mucho mas util que un 'HTTP 500' pelado.
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* respuesta no JSON */ }
+  if (!res.ok) throw new Error((data && (data.msg || data.summary)) || `HTTP ${res.status}`);
+  return data;
 }
 
 /* ── Render de tarjeta ───────────────────────────────────────────────────── */
@@ -877,6 +903,8 @@ async function doDriverUpdate(deviceId, idx) {
 async function doDriverUninstall(deviceId, deviceName, idx) {
   if (!confirm(`¿Desinstalar el dispositivo "${deviceName}"?\n\nEl controlador se eliminará del árbol de dispositivos. Si Windows lo redetecta al reiniciar, puede volver a instalarse automáticamente.\n\nEsta acción requiere permisos de administrador.`)) return;
 
+  const conPunto = pedirPuntoDeRestauracion('desinstalar el controlador');
+
   const btn = document.getElementById(`drvunin-${idx}`);
   if (!btn) return;
   btn.disabled = true;
@@ -887,7 +915,7 @@ async function doDriverUninstall(deviceId, deviceName, idx) {
     const res = await fetch('/api/driver/uninstall', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId }),
+      body: JSON.stringify({ device_id: deviceId, restore_point: conPunto }),
     });
     const data = await res.json();
     if (data.success) {
@@ -1574,11 +1602,11 @@ function exportReport() {
     if (!data || !data.title) return '';
     const itemRows = (data.items || []).map(item => `
       <tr class="s-${item.status}">
-        <td>${item.name || ''}</td>
+        <td>${escHtml(item.name)}</td>
         <td>${STATUS_LABEL[item.status] || item.status}</td>
-        <td>${item.message || ''}</td>
-        <td>${item.value || ''}</td>
-        <td>${item.detail || ''}</td>
+        <td>${escHtml(item.message)}</td>
+        <td>${escHtml(item.value)}</td>
+        <td>${escHtml(item.detail)}</td>
       </tr>`).join('');
     const table = itemRows ? `<table><thead><tr><th>Elemento</th><th>Estado</th><th>Mensaje</th><th>Valor</th><th>Detalle</th></tr></thead><tbody>${itemRows}</tbody></table>` : '';
     return `<section>
@@ -3046,3 +3074,68 @@ function renderBenchmark(data) {
     </div>
     ${histHtml}`;
 }
+
+
+/* ── Punto de restauración antes de un cambio irreversible ────────────────── */
+// Desinstalar un controlador cuesta deshacerlo. Se ofrece la red de seguridad
+// que Windows ya trae, en vez de dar por hecho que saldrá bien.
+function pedirPuntoDeRestauracion(accion) {
+  return confirm(
+    `¿Crear un punto de restauración antes de ${accion}?\n\n` +
+    `Tarda entre 30 segundos y un par de minutos, y permite deshacer el cambio ` +
+    `desde Windows si algo va mal.\n\n` +
+    `Aceptar = crear el punto primero · Cancelar = continuar sin él.`
+  );
+}
+
+/** Añade al mensaje de resultado lo que pasó con el punto de restauración. */
+function avisoRestauracion(data) {
+  if (!data || !data.restore) return '';
+  return data.restore.success
+    ? '\n\nPunto de restauración creado antes del cambio.'
+    : `\n\nNo se creó el punto de restauración: ${data.restore.message}`;
+}
+
+/* ── Privilegios de administrador ─────────────────────────────────────────── */
+// Sin elevación, media docena de módulos devuelven datos parciales y antes se
+// descubría módulo a módulo. Se avisa una sola vez, arriba del todo.
+let isAdmin = null;
+
+async function checkAdmin() {
+  try {
+    isAdmin = !!(await (await fetch('/api/status/admin')).json()).admin;
+  } catch (e) {
+    isAdmin = true;   // ante la duda no molestamos con el aviso
+  }
+  const banner = _id('admin-banner');
+  if (!banner) return;
+  let oculto = false;
+  try { oculto = localStorage.getItem('pcg-admin-banner-dismissed') === '1'; } catch (e) {}
+  banner.classList.toggle('hidden', isAdmin || oculto);
+}
+
+function dismissAdminBanner() {
+  try { localStorage.setItem('pcg-admin-banner-dismissed', '1'); } catch (e) {}
+  const banner = _id('admin-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
+async function elevateApp() {
+  if (!confirm('Se cerrará PC Guardian y se volverá a abrir pidiendo permisos de administrador.\n\n¿Continuar?')) return;
+  try {
+    const data = await (await fetch('/api/admin/elevate', { method: 'POST' })).json();
+    if (data.ok) {
+      document.body.innerHTML =
+        '<div style="display:flex;height:100vh;align-items:center;justify-content:center;' +
+        'font-family:Inter,system-ui,sans-serif;color:#8a94b4;text-align:center;padding:24px">' +
+        'Reiniciando con permisos de administrador…<br><small>Acepta el aviso de Windows. ' +
+        'Puedes cerrar esta pestaña.</small></div>';
+    } else {
+      alert(data.msg || 'No se pudo reiniciar con permisos de administrador.');
+    }
+  } catch (e) {
+    alert('No se pudo contactar con la aplicación: ' + e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', checkAdmin);

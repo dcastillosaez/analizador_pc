@@ -42,6 +42,9 @@ from analyzer.diskmap       import scan_dir as diskmap_scan
 from analyzer.duplicates    import find_duplicates, delete_files as dup_delete
 from analyzer.notifications import (enable_startup, disable_startup,
                                     startup_status, send_toast)
+from analyzer.hardening     import analyze_hardening
+from analyzer.restore       import create_restore_point, restore_status
+from analyzer._shell        import is_admin, relaunch_as_admin
 
 if getattr(sys, "frozen", False):
     _BASE = sys._MEIPASS
@@ -53,6 +56,90 @@ app = Flask(
     template_folder=os.path.join(_BASE, "templates"),
     static_folder=os.path.join(_BASE, "static"),
 )
+
+
+@app.errorhandler(Exception)
+def handle_any_error(exc):
+    """Cualquier excepción no capturada sale como JSON, no como página de error.
+
+    Sin esto un fallo en un analyzer devuelve HTML y el frontend rompe al
+    parsearlo, mostrando "Unexpected token '<'" en vez del problema real.
+    """
+    code = getattr(exc, "code", 500)
+    if not isinstance(code, int):
+        code = 500
+
+    if request.path.startswith("/api/"):
+        if code >= 500:          # los 404/405 no merecen traza
+            app.logger.exception("Fallo en %s", request.path)
+        return jsonify({
+            "status": "danger",
+            "title": "Error interno",
+            "summary": f"El módulo falló: {exc}",
+            "issue_count": 1,
+            "items": [{
+                "name": request.path,
+                "status": "danger",
+                "message": "El análisis no pudo completarse por un error interno.",
+                "value": type(exc).__name__,
+                "detail": str(exc)[:400],
+            }],
+            "ok": False,
+            "msg": str(exc)[:200],
+        }), code
+
+    return f"<h1>Error {code}</h1><p>{exc}</p>", code
+
+
+@app.route("/api/status/admin")
+def status_admin():
+    """Varios módulos devuelven datos parciales sin elevación; el frontend avisa."""
+    return jsonify({"admin": is_admin()})
+
+
+@app.route("/api/admin/elevate", methods=["POST"])
+def admin_elevate():
+    """Relanza la app pidiendo elevación por UAC y cierra esta instancia."""
+    if is_admin():
+        return jsonify({"ok": False, "msg": "La aplicación ya se ejecuta como administrador."})
+    if not relaunch_as_admin():
+        return jsonify({"ok": False, "msg": "Windows rechazó la solicitud de elevación."})
+
+    def _salir():
+        time.sleep(1.0)          # margen para que la respuesta llegue al navegador
+        os._exit(0)
+
+    threading.Thread(target=_salir, daemon=True).start()
+    return jsonify({"ok": True, "msg": "Reiniciando con permisos de administrador."})
+
+
+@app.route("/api/scan/hardening")
+def scan_hardening():
+    return jsonify(analyze_hardening())
+
+
+@app.route("/api/restore/status")
+def restore_status_route():
+    return jsonify(restore_status())
+
+
+@app.route("/api/restore/create", methods=["POST"])
+def restore_create_route():
+    body = request.get_json(force=True, silent=True) or {}
+    res = create_restore_point(body.get("description") or "PC Guardian - punto manual")
+    return jsonify({"ok": res["success"], "msg": res["message"]})
+
+
+def _punto_de_restauracion_si_procede(descripcion: str):
+    """Crea un punto de restauración si el cliente lo pidió, sin bloquear nada.
+
+    Best-effort a propósito: si la protección del sistema está apagada o falta
+    elevación, la operación sigue adelante y se informa en la respuesta.
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    if not body.get("restore_point"):
+        return None
+    return create_restore_point(descripcion)
 
 
 @app.route("/")
@@ -86,8 +173,11 @@ def do_driver_update():
 @app.route("/api/driver/uninstall", methods=["POST"])
 def do_driver_uninstall():
     body = request.get_json(silent=True) or {}
-    device_id = body.get("device_id", "")
-    return jsonify(uninstall_driver(device_id))
+    restore = _punto_de_restauracion_si_procede(
+        "PC Guardian - antes de desinstalar un controlador")
+    result = uninstall_driver(body.get("device_id", ""))
+    result["restore"] = restore
+    return jsonify(result)
 
 @app.route("/api/scan/protection")
 def scan_protection():
@@ -306,8 +396,23 @@ def _perf_recorder():
             pass
 
 
+def _serve():
+    """Sirve la app. Prefiere waitress; cae al servidor de Flask si no está.
+
+    El servidor de desarrollo de Flask no está pensado para uso continuado y
+    encaja mal con las peticiones simultáneas del escaneo.
+    """
+    try:
+        from waitress import serve
+    except ImportError:
+        app.run(host="127.0.0.1", port=8765, debug=False, use_reloader=False, threaded=True)
+        return
+    serve(app, host="127.0.0.1", port=8765, threads=8,
+          channel_timeout=900, ident="PC Guardian")
+
+
 if __name__ == "__main__":
     if sys.platform == "win32":
         threading.Thread(target=_open_browser,  daemon=True).start()
         threading.Thread(target=_perf_recorder, daemon=True).start()
-    app.run(debug=False, port=8765, use_reloader=False)
+    _serve()
