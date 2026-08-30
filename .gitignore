@@ -32,3 +32,6 @@ Desktop.ini
 
 # Worktrees temporales de Claude Code
 .claude/worktrees/
+
+# Bases de datos locales (historial, tendencias, benchmark)
+*.db
