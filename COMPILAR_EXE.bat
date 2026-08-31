@@ -42,9 +42,10 @@ if not errorlevel 1 (
 
 echo.
 echo [4/4] Compilando EXE (puede tardar varios minutos)...
+python -m analyzer._version
 echo.
 
-python -m PyInstaller --noconfirm --onefile --windowed --name "PCGuardian" --add-data "templates;templates" --add-data "static;static" --hidden-import "analyzer.hardware" --hidden-import "analyzer.startup" --hidden-import "analyzer.security" --hidden-import "analyzer.drivers" --hidden-import "analyzer.updates" --hidden-import "analyzer.protection" --hidden-import "analyzer.network" --hidden-import "analyzer.maintenance" --hidden-import "winreg" --hidden-import "psutil" --hidden-import "flask" app.py
+python -m PyInstaller --noconfirm --onefile --windowed --name "PCGuardian" --version-file "version_info.txt" --add-data "templates;templates" --add-data "static;static" --hidden-import "analyzer.hardware" --hidden-import "analyzer.startup" --hidden-import "analyzer.security" --hidden-import "analyzer.drivers" --hidden-import "analyzer.updates" --hidden-import "analyzer.protection" --hidden-import "analyzer.network" --hidden-import "analyzer.maintenance" --hidden-import "winreg" --hidden-import "psutil" --hidden-import "flask" app.py
 
 if %errorlevel% neq 0 (
     echo.

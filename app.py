@@ -46,6 +46,7 @@ from analyzer.hardening     import analyze_hardening
 from analyzer.restore       import create_restore_point, restore_status
 from analyzer.defaults      import analyze_defaults, open_default_apps_settings
 from analyzer.bios          import analyze_bios
+from analyzer._version      import __version__, APP_NAME
 from analyzer._shell        import is_admin, relaunch_as_admin
 
 if getattr(sys, "frozen", False):
@@ -147,7 +148,12 @@ def _punto_de_restauracion_si_procede(descripcion: str):
 @app.route("/")
 def index():
     bust = str(int(os.path.getmtime(os.path.join(_BASE, "static", "js", "app.js"))))
-    return render_template("index.html", cache_bust=bust)
+    return render_template("index.html", cache_bust=bust, app_version=__version__)
+
+
+@app.route("/api/version")
+def api_version():
+    return jsonify({"name": APP_NAME, "version": __version__})
 
 
 @app.route("/api/scan/hardware")

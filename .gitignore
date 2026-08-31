@@ -35,3 +35,6 @@ Desktop.ini
 
 # Bases de datos locales (historial, tendencias, benchmark)
 *.db
+
+# Generado por analyzer/_version.py en cada compilacion
+version_info.txt

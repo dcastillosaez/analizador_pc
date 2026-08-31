@@ -2438,3 +2438,15 @@ body {
 
 .c-defaults { background: linear-gradient(135deg, rgba(162,155,254,0.20), rgba(108,92,231,0.10)); }
 .c-bios { background: linear-gradient(135deg, rgba(253,203,110,0.20), rgba(225,112,85,0.10)); }
+
+/* Versión en el pie del sidebar */
+.sidebar-footer-version {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  opacity: .65;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.sidebar.collapsed .sidebar-footer-version { display: none; }

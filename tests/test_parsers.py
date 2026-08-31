@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from analyzer import _shell, _smbios, _text, bios, defaults, maintenance, network, services, updates, wifi  # noqa: E402
+from analyzer import _shell, _smbios, _text, _version, bios, defaults, maintenance, network, services, updates, wifi  # noqa: E402
 from analyzer.certs import _common_name  # noqa: E402
 
 
@@ -957,3 +957,27 @@ class TestExtractoresSmbios:
         assert bios._leer_cpu({}) == {}
         assert bios._leer_slots({}) == []
         assert bios._leer_bios({}) == {}
+
+
+# ── Versión de la aplicación ──────────────────────────────────────────────────
+
+class TestVersion:
+    def test_sigue_el_formato_semver(self):
+        import re as _re
+        assert _re.fullmatch(r"\d+\.\d+\.\d+", _version.__version__)
+
+    def test_cuaterna_para_el_recurso_de_windows(self):
+        v = _version.version_tuple()
+        assert len(v) == 4 and all(isinstance(n, int) for n in v)
+        assert v[:3] == tuple(int(x) for x in _version.__version__.split("."))
+
+    def test_el_version_info_lleva_la_version_vigente(self):
+        contenido = _version.version_info_file()
+        assert f"StringStruct('FileVersion', '{_version.__version__}')" in contenido
+        assert "PCGuardian.exe" in contenido
+
+    def test_el_version_info_es_evaluable_por_pyinstaller(self):
+        # PyInstaller hace exec() del fichero: tiene que ser Python válido
+        import ast
+        cuerpo = _version.version_info_file()
+        ast.parse(cuerpo)

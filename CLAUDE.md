@@ -19,6 +19,8 @@ analyzer/
                             timeouts sin excepciones, is_admin/relaunch_as_admin
   _text.py                  Heurística compartida de nombres generados al azar
                             (entropía + proporción de vocales, umbrales calibrados)
+  _version.py               Versión de la app (fuente única) y generador de
+                            version_info.txt para los metadatos del EXE
   _storage.py               Ubicación de las bases de datos (%LOCALAPPDATA%\PCGuardian)
                             y migración desde la ubicación antigua
   hardware.py               CPU, RAM, disco — psutil
@@ -95,6 +97,7 @@ por_implementar.md          Backlog con estado actualizado (✓ = implementado)
 | GET | `/api/scan/firewall-rules` | Reglas de firewall no estándar |
 | GET | `/api/scan/defaults` | Aplicaciones predeterminadas por tipo |
 | GET | `/api/scan/bios` | Configuración de BIOS/UEFI |
+| GET | `/api/version` | Nombre y versión de la aplicación |
 | GET | `/api/perf/snapshot` | Snapshot en tiempo real (polling 2 s) |
 | GET | `/api/perf/history` | Snapshots últimas 24 h (SQLite) |
 | GET | `/api/connectivity/speedtest` | Test de descarga ~10 MB |
@@ -197,6 +200,10 @@ Todos los módulos de escaneo devuelven:
   la entropía máxima de una cadena de 12 caracteres distintos es 3,58.
 - No añadas dependencias externas sin actualizar `requirements.txt`, `PCGuardian.spec`
   (lista `hiddenimports`) y este fichero.
+- **La versión vive solo en `analyzer/_version.py`.** De ahí salen el pie del sidebar
+  (por Jinja), `/api/version` y `version_info.txt`, que `COMPILAR_EXE.bat` regenera
+  antes de compilar. Al subirla, actualiza también el encabezado del README y pon
+  el tag de git correspondiente.
 - **El área de cadenas de SMBIOS acaba en dos nulos, no en uno.** Una estructura sin
   cadenas son justo esos dos nulos: si `_smbios._leer_cadenas` salta solo uno, el
   recorrido se desincroniza y a partir de ahí no se reconoce ningún tipo más — con lo

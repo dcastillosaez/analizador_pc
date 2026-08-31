@@ -87,6 +87,16 @@
 
 ---
 
+## Configuración del sistema
+
+- [x] **Aplicaciones predeterminadas** — qué programa abre cada tipo de archivo y de enlace, con detección de handlers en carpetas temporales y de ProgId huérfanos; el cambio se delega en `ms-settings:defaultapps` porque `UserChoice` va firmado con un hash no documentado
+- [x] **Configuración de BIOS/UEFI** — parser propio de la tabla SMBIOS: XMP/EXPO desactivado, canales de memoria, núcleos habilitados, ancho de los slots PCIe ocupados, antigüedad de la BIOS, UEFI/Legacy, GPT/MBR, virtualización, controlador de almacenamiento, límites de `bcdedit` y variables UEFI globales con elevación
+- [x] **Versionado de la aplicación** — constante única en `analyzer/_version.py`, visible en el pie del sidebar, servida por `/api/version` e incrustada en los metadatos del EXE
+- [ ] **Comparar la BIOS con la última del fabricante** — hoy solo se avisa por antigüedad; haría falta consultar la web del fabricante por modelo de placa
+- [ ] **Ajustes de BIOS por WMI en equipos HP, Dell y Lenovo** — el módulo ya detecta si el fabricante los expone, falta leerlos y ofrecer los cambios que permitan
+
+---
+
 ## Seguridad de plataforma
 
 - [x] **Protecciones del sistema** — BitLocker, Secure Boot, TPM, protección en tiempo real, protección contra manipulaciones, acceso controlado a carpetas (ransomware), antigüedad de las definiciones, UAC, SmartScreen y puntos de restauración

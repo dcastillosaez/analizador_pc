@@ -2,6 +2,8 @@
 
 Herramienta de diagnóstico local para Windows 10/11 con interfaz web. Analiza el estado del sistema e informa en lenguaje claro, sin jerga técnica.
 
+**Versión 1.0.0** — la versión vive en `analyzer/_version.py` y de ahí sale el pie del sidebar, el endpoint `/api/version` y los metadatos del EXE.
+
 > © 2026 David Castillo
 
 ---
@@ -113,6 +115,25 @@ Servicios automáticos en ejecución con detección de rutas sospechosas.
 ### 23. Inventario _(on-demand)_ — `analyzer/inventory.py`
 CPU, GPU, RAM slot a slot, placa base y BIOS via WMI.
 
+### 24. Aplicaciones predeterminadas _(on-demand)_ — `analyzer/defaults.py`
+Qué programa abre cada tipo de archivo y de enlace: navegador, PDF, imágenes, vídeo, comprimidos y documentos. Resuelve el ProgId del registro a nombre comercial y ruta real del ejecutable, incluidos los nombres localizados de las apps del Store.
+
+Marca en rojo los handlers que apuntan a `Temp` o `Downloads` — el patrón del secuestro de asociaciones — y avisa de los ProgId que ya no existen, que dejan el tipo de archivo huérfano.
+
+Solo lectura, y no por pereza: Windows firma cada clave `UserChoice` con un hash sobre SID, extensión y ProgId cuyo algoritmo nunca documentó. Si se escribe el ProgId a mano, el sistema detecta la manipulación y revierte la asociación. El botón de cada fila abre `ms-settings:defaultapps` en la ficha de esa aplicación, que es donde el cambio sí se queda.
+
+### 25. Configuración de BIOS/UEFI _(on-demand)_ — `analyzer/bios.py` + `analyzer/_smbios.py`
+Lee la tabla SMBIOS/DMI que publica el firmware con `GetSystemFirmwareTable`, sin drivers ni privilegios, y evalúa doce aspectos del estado efectivo del equipo:
+
+- **Memoria por debajo de su velocidad nominal** — el síntoma de tener el XMP/EXPO desactivado. Sin perfil aplicado, SMBIOS informa de la velocidad JEDEC base, así que la velocidad real del módulo se deduce de su part number.
+- **Canales de memoria** — avisa si todos los módulos comparten canal pudiendo repartirse.
+- **Núcleos de CPU habilitados frente a los presentes** — detecta un `Active Processor Cores` mal puesto en la BIOS.
+- **Slots PCI Express** — el ancho eléctrico y la ocupación de cada uno. Avisa si hay una tarjeta en un slot estrecho habiendo otro más ancho libre.
+- **Antigüedad de la BIOS**, modo de arranque UEFI o Legacy/CSM, GPT o MBR en el disco de sistema, virtualización, controlador de almacenamiento y límites de arranque heredados de `msconfig`.
+- **Variables UEFI globales** — orden de arranque y Setup Mode, cuando la app corre elevada.
+
+Las opciones del menú de setup no se pueden leer ni cambiar de forma genérica: viven en NVRAM con GUID propietario y formato binario opaco. El módulo detecta si el fabricante las expone por WMI (solo HP, Dell y Lenovo) y, cuando no, lo dice claramente.
+
 ---
 
 ## Funcionalidades transversales
@@ -214,6 +235,9 @@ Toggle en la barra superior. Persiste en `localStorage`.
 | GET | `/api/scan/software` | Inventario de programas instalados |
 | GET | `/api/scan/dns` | Servidores DNS por interfaz + DoH |
 | GET | `/api/scan/firewall-rules` | Reglas de firewall no estándar |
+| GET | `/api/scan/defaults` | Aplicaciones predeterminadas por tipo |
+| GET | `/api/scan/bios` | Configuración de BIOS/UEFI |
+| GET | `/api/version` | Nombre y versión de la aplicación |
 | GET | `/api/perf/snapshot` | Snapshot tiempo real (polling 2 s) |
 | GET | `/api/perf/history` | Snapshots últimas 24 h |
 | GET | `/api/connectivity/speedtest` | Test de descarga |
@@ -230,6 +254,7 @@ Toggle en la barra superior. Persiste en `localStorage`.
 | POST | `/api/software/uninstall` | Desinstala programa ⚠️ |
 | POST | `/api/dns/set` | Cambia DNS de una interfaz ⚠️ |
 | POST | `/api/firewall-rules/delete` | Elimina regla de firewall ⚠️ |
+| POST | `/api/defaults/open-settings` | Abre Configuración de apps predeterminadas |
 | POST | `/api/quickfix/energy-high` | Activa Alto Rendimiento ⚠️ |
 | POST | `/api/quickfix/disable-startup` | Deshabilita entrada de arranque ⚠️ |
 | POST | `/api/quickfix/telemetry-off` | Desactiva telemetría Windows ⚠️ |
