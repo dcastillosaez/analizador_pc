@@ -1,0 +1,36 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    # Windows obligatorio: los módulos importan winreg y llaman a la API de Windows.
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: python -m pip install --upgrade pip --quiet && pip install -r requirements.txt --quiet
+
+      - name: Comprobar que la app importa
+        run: python -c "import app; from analyzer._version import __version__; print(__version__)"
+
+      - name: Tests
+        run: python -m pytest tests/ -q

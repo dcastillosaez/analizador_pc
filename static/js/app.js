@@ -48,10 +48,11 @@ const MODULE_META = {
   hardening:        { label: 'Protecciones',  group: 'Seguridad',  emoji: '🔐', color: '#fd79a8' },
   defaults:         { label: 'Apps por defecto', group: 'Sistema', emoji: '🧩', color: '#a29bfe' },
   bios:             { label: 'BIOS / UEFI',    group: 'Sistema', emoji: '🧠', color: '#fdcb6e' },
+  boot:             { label: 'Arranque lento', group: 'Sistema',     emoji: '⏱️', color: '#00b894' },
 };
 
 // IDs del escaneo general (excluye perf que es on-demand)
-const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','hardening'];
+const SCAN_MODULE_IDS = ['hardware','startup','security','drivers','protection','network','maintenance','updates','connectivity','energy','privacy','services','hardening','boot'];
 
 // Estado de navegación
 let activeView = 'overview';
@@ -395,6 +396,7 @@ const MODULE_CMDS = {
   processes:        ['psutil.process_iter(["pid","name","cpu_percent","memory_percent"])', 'proc.memory_info().rss', 'proc.terminate()'],
   dns:              ['Get-DnsClientServerAddress -AddressFamily IPv4', 'winreg HKLM\\SYSTEM\\...\\Dnscache\\EnableAutoDoh'],
   'firewall-rules': ['Get-NetFirewallRule -Enabled True | Where-Object {...} | ConvertTo-Json'],
+  boot:             ['Get-WinEvent Microsoft-Windows-Diagnostics-Performance/Operational (ID 100-106)'],
   bios:             ['GetSystemFirmwareTable(RSMB) — tabla SMBIOS/DMI', 'GetFirmwareEnvironmentVariable — variables UEFI', 'bcdedit /enum {current}'],
   defaults:         ['winreg HKCU\...\Shell\Associations\UrlAssociations\http\UserChoice', 'winreg HKCU\...\Explorer\FileExts\.pdf\UserChoice', 'ms-settings:defaultapps'],
 };

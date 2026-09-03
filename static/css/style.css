@@ -2450,3 +2450,4 @@ body {
   white-space: nowrap;
 }
 .sidebar.collapsed .sidebar-footer-version { display: none; }
+.c-boot { background: linear-gradient(135deg, rgba(0,184,148,0.20), rgba(46,213,115,0.10)); }

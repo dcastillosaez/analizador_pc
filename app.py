@@ -46,6 +46,7 @@ from analyzer.hardening     import analyze_hardening
 from analyzer.restore       import create_restore_point, restore_status
 from analyzer.defaults      import analyze_defaults, open_default_apps_settings
 from analyzer.bios          import analyze_bios
+from analyzer.boot          import analyze_boot
 from analyzer._version      import __version__, APP_NAME
 from analyzer._shell        import is_admin, relaunch_as_admin
 
@@ -292,6 +293,10 @@ def scan_software():
 def do_uninstall():
     body = request.get_json(force=True, silent=True) or {}
     return jsonify(uninstall_software(body.get("name", "")))
+
+@app.route("/api/scan/boot")
+def scan_boot():
+    return jsonify(analyze_boot())
 
 @app.route("/api/scan/bios")
 def scan_bios():
