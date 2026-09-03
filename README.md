@@ -122,7 +122,16 @@ Marca en rojo los handlers que apuntan a `Temp` o `Downloads` — el patrón del
 
 Solo lectura, y no por pereza: Windows firma cada clave `UserChoice` con un hash sobre SID, extensión y ProgId cuyo algoritmo nunca documentó. Si se escribe el ProgId a mano, el sistema detecta la manipulación y revierte la asociación. El botón de cada fila abre `ms-settings:defaultapps` en la ficha de esa aplicación, que es donde el cambio sí se queda.
 
-### 25. Configuración de BIOS/UEFI _(on-demand)_ — `analyzer/bios.py` + `analyzer/_smbios.py`
+### 25. Rendimiento del arranque — `analyzer/boot.py`
+Cuánto tarda el equipo en encender y qué lo está frenando, con nombres y milisegundos.
+
+Windows lleva esa contabilidad en el canal `Microsoft-Windows-Diagnostics-Performance/Operational`: el evento 100 registra los tiempos de cada arranque y los 101 a 106 señalan qué aplicación, controlador, servicio o tarea programada se pasó de tiempo. El módulo se queda con el arranque más reciente, agrupa a cada culpable por su peor marca y lista los ocho peores.
+
+Complementa al módulo de Arranque: aquel dice *qué* se ejecuta al encender, este dice *cuánto cuesta cada cosa*.
+
+El canal está restringido a administradores, así que sin elevación el módulo lo dice en lugar de fingir que no hay nada. También distingue ese caso del de un equipo que aún no ha acumulado datos.
+
+### 26. Configuración de BIOS/UEFI _(on-demand)_ — `analyzer/bios.py` + `analyzer/_smbios.py`
 Lee la tabla SMBIOS/DMI que publica el firmware con `GetSystemFirmwareTable`, sin drivers ni privilegios, y evalúa doce aspectos del estado efectivo del equipo:
 
 - **Memoria por debajo de su velocidad nominal** — el síntoma de tener el XMP/EXPO desactivado. Sin perfil aplicado, SMBIOS informa de la velocidad JEDEC base, así que la velocidad real del módulo se deduce de su part number.
@@ -236,6 +245,7 @@ Toggle en la barra superior. Persiste en `localStorage`.
 | GET | `/api/scan/dns` | Servidores DNS por interfaz + DoH |
 | GET | `/api/scan/firewall-rules` | Reglas de firewall no estándar |
 | GET | `/api/scan/defaults` | Aplicaciones predeterminadas por tipo |
+| GET | `/api/scan/boot` | Rendimiento del arranque |
 | GET | `/api/scan/bios` | Configuración de BIOS/UEFI |
 | GET | `/api/version` | Nombre y versión de la aplicación |
 | GET | `/api/perf/snapshot` | Snapshot tiempo real (polling 2 s) |

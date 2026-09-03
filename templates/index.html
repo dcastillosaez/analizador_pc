@@ -90,6 +90,16 @@
           <span class="nav-dot dot-pending" id="nav-dot-startup"></span>
         </div>
 
+        <div class="nav-item" id="nav-item-boot" onclick="navigateTo('boot')" tabindex="0" title="Rendimiento del arranque" role="button" aria-label="Rendimiento del arranque">
+          <div class="nav-item-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/>
+            </svg>
+          </div>
+          <span class="nav-item-label">Arranque lento</span>
+          <span class="nav-dot dot-pending" id="nav-dot-boot"></span>
+        </div>
+
         <div class="nav-item" id="nav-item-inventory" onclick="navigateTo('inventory')" tabindex="0" title="Inventario de Hardware" role="button" aria-label="Inventario de Hardware">
           <div class="nav-item-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1169,6 +1179,25 @@
       </div>
       <div class="card-body" id="body-firewall-rules">
         <div class="empty-state"><span class="empty-emoji">🛡️</span><p>Pulsa "Analizar" para listar las reglas de firewall.</p></div>
+      </div>
+    </div>
+
+    <!-- Rendimiento del arranque -->
+    <div class="card" id="card-boot">
+      <div class="card-header">
+        <div class="card-icon-wrap c-boot">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/>
+          </svg>
+        </div>
+        <div class="card-info">
+          <h2>Rendimiento del arranque</h2>
+          <p>Cuánto tarda en encender y qué lo está frenando</p>
+        </div>
+        <div class="card-badge" id="badge-boot"><span class="dot-pending"></span></div>
+      </div>
+      <div class="card-body" id="body-boot">
+        <div class="empty-state"><span class="empty-emoji">⏱️</span><p>Pendiente de análisis.</p></div>
       </div>
     </div>
 

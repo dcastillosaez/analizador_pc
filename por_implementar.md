@@ -92,6 +92,8 @@
 - [x] **Aplicaciones predeterminadas** — qué programa abre cada tipo de archivo y de enlace, con detección de handlers en carpetas temporales y de ProgId huérfanos; el cambio se delega en `ms-settings:defaultapps` porque `UserChoice` va firmado con un hash no documentado
 - [x] **Configuración de BIOS/UEFI** — parser propio de la tabla SMBIOS: XMP/EXPO desactivado, canales de memoria, núcleos habilitados, ancho de los slots PCIe ocupados, antigüedad de la BIOS, UEFI/Legacy, GPT/MBR, virtualización, controlador de almacenamiento, límites de `bcdedit` y variables UEFI globales con elevación
 - [x] **Versionado de la aplicación** — constante única en `analyzer/_version.py`, visible en el pie del sidebar, servida por `/api/version` e incrustada en los metadatos del EXE
+- [x] **Análisis del arranque lento** — tiempos reales del arranque y los programas, servicios, controladores y tareas que lo alargan, del log de rendimiento de Windows (requiere elevación)
+- [x] **Integración continua** — GitHub Actions ejecuta la suite en `windows-latest` con Python 3.12 y 3.13 en cada push y pull request
 - [ ] **Comparar la BIOS con la última del fabricante** — hoy solo se avisa por antigüedad; haría falta consultar la web del fabricante por modelo de placa
 - [ ] **Ajustes de BIOS por WMI en equipos HP, Dell y Lenovo** — el módulo ya detecta si el fabricante los expone, falta leerlos y ofrecer los cambios que permitan
 

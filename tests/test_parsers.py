@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from analyzer import _shell, _smbios, _text, _version, bios, defaults, maintenance, network, services, updates, wifi  # noqa: E402
+from analyzer import _shell, _smbios, _text, _version, bios, boot, defaults, maintenance, network, services, updates, wifi  # noqa: E402
 from analyzer.certs import _common_name  # noqa: E402
 
 
@@ -981,3 +981,111 @@ class TestVersion:
         import ast
         cuerpo = _version.version_info_file()
         ast.parse(cuerpo)
+
+
+# ── Rendimiento del arranque ──────────────────────────────────────────────────
+
+def _ev(id_, data, time="2026-09-03T09:00:00"):
+    return {"Id": id_, "Time": time, "Data": data}
+
+
+def _ev100(main_ms, total_ms=None, time="2026-09-03T09:00:00"):
+    return _ev(100, {"MainPathBootTime": str(main_ms),
+                     "BootTime": str(total_ms if total_ms is not None else main_ms + 20000),
+                     "BootNumStartupApps": "12"}, time)
+
+
+class TestTiempoLegible:
+    def test_segundos(self):
+        assert boot._ms_a_texto(8200) == "8 s"
+
+    def test_minutos_y_segundos(self):
+        assert boot._ms_a_texto(95000) == "1 min 35 s"
+
+    def test_minutos_exactos(self):
+        assert boot._ms_a_texto(120000) == "2 min"
+
+    def test_menos_de_un_segundo(self):
+        assert boot._ms_a_texto(400) == "0,4 s"
+
+    def test_cero(self):
+        assert boot._ms_a_texto(0) == "0 s"
+
+
+class TestArranque:
+    def test_arranque_rapido_es_ok(self):
+        items = boot._parse_boot_events([_ev100(18000)])
+        assert items[0]["status"] == "ok" and "18 s" in items[0]["value"]
+
+    def test_arranque_lento_avisa(self):
+        items = boot._parse_boot_events([_ev100(62000)])
+        assert items[0]["status"] == "warning"
+
+    def test_arranque_muy_lento_es_grave(self):
+        items = boot._parse_boot_events([_ev100(150000)])
+        assert items[0]["status"] == "danger"
+
+    def test_usa_el_arranque_mas_reciente(self):
+        viejo = _ev100(150000, time="2026-08-01T09:00:00")
+        nuevo = _ev100(15000, time="2026-09-03T09:00:00")
+        items = boot._parse_boot_events([viejo, nuevo])
+        assert items[0]["status"] == "ok"
+
+    def test_lista_los_culpables_ordenados_por_tiempo(self):
+        eventos = [
+            _ev100(70000),
+            _ev(101, {"Name": "OneDrive.exe", "TotalTime": "5000", "DegradationTime": "3000"}),
+            _ev(103, {"Name": "SysMain", "TotalTime": "22000", "DegradationTime": "12000"}),
+            _ev(102, {"Name": "raid.sys", "TotalTime": "9000", "DegradationTime": "4000"}),
+        ]
+        nombres = [i["name"] for i in boot._parse_boot_events(eventos)[1:]]
+        assert nombres[0].startswith("SysMain")
+        assert "raid.sys" in nombres[1] and "OneDrive.exe" in nombres[2]
+
+    def test_distingue_el_tipo_de_cada_culpable(self):
+        eventos = [_ev100(70000),
+                   _ev(101, {"Name": "app.exe", "TotalTime": "9000"}),
+                   _ev(102, {"Name": "drv.sys", "TotalTime": "8000"}),
+                   _ev(103, {"Name": "svc", "TotalTime": "7000"}),
+                   _ev(106, {"Name": "tarea", "TotalTime": "6000"})]
+        tipos = [i["detail"] for i in boot._parse_boot_events(eventos)[1:]]
+        assert any("plicaci" in t for t in tipos)
+        assert any("ontrolador" in t for t in tipos)
+        assert any("ervicio" in t for t in tipos)
+        assert any("area" in t or "área" in t for t in tipos)
+
+    def test_agrupa_el_mismo_nombre_quedandose_con_el_peor(self):
+        eventos = [_ev100(70000),
+                   _ev(101, {"Name": "OneDrive.exe", "TotalTime": "5000"}),
+                   _ev(101, {"Name": "OneDrive.exe", "TotalTime": "18000"})]
+        culpables = boot._parse_boot_events(eventos)[1:]
+        assert len(culpables) == 1 and "18 s" in culpables[0]["value"]
+
+    def test_un_retraso_pequeno_no_se_marca_como_aviso(self):
+        eventos = [_ev100(20000), _ev(101, {"Name": "leve.exe", "TotalTime": "1200"})]
+        assert boot._parse_boot_events(eventos)[1]["status"] == "ok"
+
+    def test_ignora_eventos_de_tipos_no_contemplados(self):
+        eventos = [_ev100(20000), _ev(999, {"Name": "raro", "TotalTime": "30000"})]
+        assert len(boot._parse_boot_events(eventos)) == 1
+
+    def test_sin_eventos_lo_dice_sin_inventar(self):
+        items = boot._parse_boot_events([])
+        assert len(items) == 1 and items[0]["status"] == "ok"
+        assert "Sin datos" in items[0]["value"]
+        assert "datos" in items[0]["message"].lower()
+
+    def test_culpables_sin_evento_100_siguen_listandose(self):
+        eventos = [_ev(103, {"Name": "SysMain", "TotalTime": "22000"})]
+        items = boot._parse_boot_events(eventos)
+        assert any("SysMain" in i["name"] for i in items)
+
+    def test_tope_de_culpables_listados(self):
+        eventos = [_ev100(70000)] + [
+            _ev(101, {"Name": f"app{i}.exe", "TotalTime": str(9000 + i)}) for i in range(15)]
+        assert len(boot._parse_boot_events(eventos)) - 1 == 8
+
+    def test_datos_corruptos_no_lanzan(self):
+        eventos = [_ev(100, {"MainPathBootTime": "no-es-un-numero"}),
+                   _ev(101, {"Name": "", "TotalTime": None})]
+        assert isinstance(boot._parse_boot_events(eventos), list)

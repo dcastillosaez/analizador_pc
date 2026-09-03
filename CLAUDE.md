@@ -51,6 +51,8 @@ analyzer/
   firewall_rules.py         Reglas no estándar habilitadas — PowerShell Get-NetFirewallRule
   _smbios.py                Parser de la tabla SMBIOS/DMI del firmware
                             (GetSystemFirmwareTable, sin drivers ni privilegios)
+  boot.py                   Rendimiento del arranque: tiempos del evento 100 y culpables
+                            de los eventos 101-106 (el canal exige elevación)
   bios.py                   Configuración efectiva de BIOS/UEFI: XMP, canales de RAM,
                             núcleos habilitados, slots PCIe, modo de arranque
   defaults.py               Aplicaciones predeterminadas por tipo de archivo y protocolo
@@ -96,6 +98,7 @@ por_implementar.md          Backlog con estado actualizado (✓ = implementado)
 | GET | `/api/scan/dns` | Servidores DNS por interfaz + DoH |
 | GET | `/api/scan/firewall-rules` | Reglas de firewall no estándar |
 | GET | `/api/scan/defaults` | Aplicaciones predeterminadas por tipo |
+| GET | `/api/scan/boot` | Rendimiento del arranque |
 | GET | `/api/scan/bios` | Configuración de BIOS/UEFI |
 | GET | `/api/version` | Nombre y versión de la aplicación |
 | GET | `/api/perf/snapshot` | Snapshot en tiempo real (polling 2 s) |
@@ -170,6 +173,8 @@ Todos los módulos de escaneo devuelven:
 
 - Los módulos de `analyzer/` son **stateless**: no guardan estado entre llamadas. Excepción: `history.py` y `perf_history.py` escriben a SQLite.
 - El monitor de rendimiento (`perf`) **no** forma parte del escaneo general — es on-demand.
+- `boot` sí entra en el escaneo general: tarda menos de un segundo y su valor está
+  justo ahí, al lado de `startup` (uno dice qué arranca, el otro cuánto cuesta).
 - `firewall-rules`, `software`, `defaults` y `bios` tampoco están en el escaneo general (on-demand).
 - `winget` emite en la página OEM del sistema, no en UTF-8. `updates.py` prueba `utf-8 → oem → cp1252 → latin-1`. No cambies esto.
 - Los encabezados de `winget` están en el idioma del sistema. El parser usa aliases bilingües.
@@ -200,6 +205,10 @@ Todos los módulos de escaneo devuelven:
   la entropía máxima de una cadena de 12 caracteres distintos es 3,58.
 - No añadas dependencias externas sin actualizar `requirements.txt`, `PCGuardian.spec`
   (lista `hiddenimports`) y este fichero.
+- **El canal `Diagnostics-Performance/Operational` solo lo leen los administradores.**
+  `boot.analyze_boot` distingue "no hay permisos" de "no hay datos todavía": son cosas
+  distintas y el usuario necesita saber cuál le toca. Los eventos aparecen tras
+  arranques completos, no al reanudar desde suspensión.
 - **La versión vive solo en `analyzer/_version.py`.** De ahí salen el pie del sidebar
   (por Jinja), `/api/version` y `version_info.txt`, que `COMPILAR_EXE.bat` regenera
   antes de compilar. Al subirla, actualiza también el encabezado del README y pon
