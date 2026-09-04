@@ -1089,3 +1089,98 @@ class TestArranque:
         eventos = [_ev(100, {"MainPathBootTime": "no-es-un-numero"}),
                    _ev(101, {"Name": "", "TotalTime": None})]
         assert isinstance(boot._parse_boot_events(eventos), list)
+
+
+class TestArranqueRedaccion:
+    def test_concordancia_de_genero_en_cada_tipo(self):
+        eventos = [_ev100(70000),
+                   _ev(101, {"Name": "app.exe", "TotalTime": "9000"}),
+                   _ev(102, {"Name": "drv.sys", "TotalTime": "8000"}),
+                   _ev(103, {"Name": "svc", "TotalTime": "7000"}),
+                   _ev(106, {"Name": "tarea", "TotalTime": "6000"})]
+        mensajes = " ".join(i["message"] for i in boot._parse_boot_events(eventos)[1:])
+        assert "Esta servicio" not in mensajes
+        assert "Esta controlador" not in mensajes
+        assert "Este aplicación" not in mensajes
+        assert "El servicio" in mensajes and "El controlador" in mensajes
+
+    def test_el_consejo_depende_del_tipo(self):
+        eventos = [_ev100(70000),
+                   _ev(101, {"Name": "app.exe", "TotalTime": "9000"}),
+                   _ev(103, {"Name": "svc", "TotalTime": "9000"}),
+                   _ev(102, {"Name": "drv.sys", "TotalTime": "9000"})]
+        por_nombre = {i["name"]: i["message"] for i in boot._parse_boot_events(eventos)[1:]}
+        assert "Administrador de tareas" in por_nombre["app.exe retrasa el arranque"]
+        assert "services.msc" in por_nombre["svc retrasa el arranque"]
+        assert "controlador" in por_nombre["drv.sys retrasa el arranque"].lower()
+        assert "Administrador de tareas" not in por_nombre["drv.sys retrasa el arranque"]
+
+
+class TestComponentesDeWindows:
+    def test_defender_no_recibe_el_consejo_de_quitarlo_del_inicio(self):
+        eventos = [_ev100(70000), _ev(101, {"Name": "MsMpEng.exe", "TotalTime": "134000"})]
+        item = boot._parse_boot_events(eventos)[1]
+        assert "Quítala del inicio" not in item["message"]
+        assert item["status"] == "ok"
+
+    def test_el_componente_se_identifica_como_tal(self):
+        eventos = [_ev100(70000), _ev(101, {"Name": "MsMpEng.exe", "TotalTime": "134000"})]
+        item = boot._parse_boot_events(eventos)[1]
+        assert "Windows" in item["message"] or "sistema" in item["message"].lower()
+        assert "2 min 14 s" in item["value"]
+
+    def test_reconoce_componentes_por_su_ruta(self):
+        eventos = [_ev100(70000),
+                   _ev(101, {"Name": "raro.exe", "TotalTime": "9000",
+                             "PathName": r"C:\Windows\System32\raro.exe"})]
+        assert boot._parse_boot_events(eventos)[1]["status"] == "ok"
+
+    def test_una_app_normal_si_recibe_el_consejo(self):
+        eventos = [_ev100(70000),
+                   _ev(101, {"Name": "Dropbox.exe", "TotalTime": "24000",
+                             "PathName": r"C:\Program Files\Dropbox\Dropbox.exe"})]
+        item = boot._parse_boot_events(eventos)[1]
+        assert item["status"] == "warning" and "Administrador de tareas" in item["message"]
+
+    def test_los_componentes_no_cuentan_como_problema(self):
+        eventos = [_ev100(20000), _ev(101, {"Name": "SearchIndexer.exe", "TotalTime": "60000"})]
+        items = boot._parse_boot_events(eventos)
+        assert all(i["status"] == "ok" for i in items)
+
+
+class TestArranqueSinDatos:
+    """Sin eventos hay dos motivos y el usuario necesita saber cuál le toca."""
+
+    def _con(self, monkeypatch, eventos, admin):
+        monkeypatch.setattr(boot, "run_ps_json", lambda *a, **k: eventos)
+        monkeypatch.setattr(boot, "is_admin", lambda: admin)
+        return boot.analyze_boot()
+
+    def test_sin_permisos_lo_dice(self, monkeypatch):
+        r = self._con(monkeypatch, [], admin=False)
+        assert r["items"][0]["value"] == "Requiere admin"
+
+    def test_con_permisos_y_sin_eventos_es_falta_de_datos(self, monkeypatch):
+        r = self._con(monkeypatch, [], admin=True)
+        assert r["items"][0]["value"] == "Sin datos aún"
+
+    def test_si_hay_eventos_no_habla_de_permisos(self, monkeypatch):
+        eventos = [{"Id": 100, "Time": "2026-09-03T09:00:00",
+                    "Data": {"MainPathBootTime": "25000", "BootTime": "45000"}}]
+        r = self._con(monkeypatch, eventos, admin=False)
+        assert "25 s" in r["items"][0]["value"]
+
+    def test_un_unico_evento_no_lista_se_acepta(self, monkeypatch):
+        evento = {"Id": 100, "Time": "2026-09-03T09:00:00",
+                  "Data": {"MainPathBootTime": "25000"}}
+        r = self._con(monkeypatch, evento, admin=True)
+        assert "25 s" in r["items"][0]["value"]
+
+
+class TestRuntimesCompartidos:
+    def test_webview2_no_se_quita_del_inicio_sino_su_app(self):
+        eventos = [_ev100(70000), _ev(101, {"Name": "msedgewebview2.exe", "TotalTime": "17000"})]
+        item = boot._parse_boot_events(eventos)[1]
+        assert "Administrador de tareas" not in item["message"]
+        assert "aplicación" in item["message"].lower()
+        assert item["status"] == "ok"

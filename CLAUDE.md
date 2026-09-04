@@ -205,9 +205,17 @@ Todos los módulos de escaneo devuelven:
   la entropía máxima de una cadena de 12 caracteres distintos es 3,58.
 - No añadas dependencias externas sin actualizar `requirements.txt`, `PCGuardian.spec`
   (lista `hiddenimports`) y este fichero.
+- **El evento 100 se pide en una consulta aparte.** En un equipo con muchos retrasos,
+  los eventos 101 copan el tope de resultados y expulsan al 100, que es el único que
+  trae los tiempos del arranque: quedaba una lista de culpables sin el total.
+- **Nunca aconsejes quitar del inicio un componente de Windows.** `boot.py` separa
+  los componentes del sistema (MsMpEng y compañía) y los runtimes compartidos
+  (WebView2), que no arrancan solos: el consejo genérico mandaba al usuario a
+  desactivar el motor antimalware o a buscar en la pestaña Inicio algo que no está.
 - **El canal `Diagnostics-Performance/Operational` solo lo leen los administradores.**
-  `boot.analyze_boot` distingue "no hay permisos" de "no hay datos todavía": son cosas
-  distintas y el usuario necesita saber cuál le toca. Los eventos aparecen tras
+  PowerShell devuelve la misma excepción para "sin permisos" que para "sin eventos",
+  así que quien lo distingue es `is_admin()`: son cosas distintas y el usuario
+  necesita saber cuál le toca. Los eventos aparecen tras
   arranques completos, no al reanudar desde suspensión.
 - **La versión vive solo en `analyzer/_version.py`.** De ahí salen el pie del sidebar
   (por Jinja), `/api/version` y `version_info.txt`, que `COMPILAR_EXE.bat` regenera
